@@ -1,0 +1,38 @@
+{
+  "name": "@incuera/sdk",
+  "version": "0.1.0",
+  "description": "Incuera - Session replay SDK with AI-powered analytics",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "session-replay",
+    "analytics",
+    "rrweb",
+    "session-recording",
+    "user-analytics",
+    "session-insights"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "dependencies": {
+    "rrweb": "^2.0.0-alpha.13"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsup": "^8.0.1",
+    "typescript": "^5.3.3"
+  }
+}
