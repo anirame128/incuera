@@ -44,45 +44,40 @@ export default function DashboardLayout({
   const [newProjectDialogOpen, setNewProjectDialogOpen] = useState(false);
   const [projectRefreshKey, setProjectRefreshKey] = useState(0);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [projectsLoaded, setProjectsLoaded] = useState(false);
   
   // Extract project ID from pathname
   const projectIdMatch = pathname.match(/\/dashboard\/projects\/([^\/]+)/);
   const currentProjectId = projectIdMatch ? projectIdMatch[1] : null;
   const currentProject = projects.find(p => p.id === currentProjectId);
   
+  // Load projects once on mount, then use cache for all navigation
   useEffect(() => {
     const storedUserId = localStorage.getItem('userId');
-    if (storedUserId) {
-      // Only refetch if we're on dashboard or if refresh key changed
-      // Don't refetch when just navigating between project pages
-      if (pathname === '/dashboard' || projectRefreshKey > 0) {
-        fetchProjects(storedUserId);
-      } else {
-        // Just check cache for project name updates
-        const cached = dataCache.getProjects(storedUserId);
-        if (cached) {
-          setProjects(cached);
-        }
-      }
-    }
-  }, [pathname, projectRefreshKey]);
-  
-  const fetchProjects = async (userId: string, useCache = true) => {
-    // Check cache first
-    if (useCache) {
-      const cached = dataCache.getProjects(userId);
-      if (cached) {
-        setProjects(cached);
-        return;
-      }
+    if (!storedUserId || projectsLoaded) return;
+
+    // Try cache first
+    const cached = dataCache.getProjects(storedUserId);
+    if (cached && cached.length > 0) {
+      setProjects(cached);
+      setProjectsLoaded(true);
+      return;
     }
 
+    // If no cache or refresh requested, fetch from API
+    if (projectRefreshKey === 0 || projectRefreshKey > 0) {
+      fetchProjects(storedUserId);
+    }
+  }, [projectsLoaded, projectRefreshKey]);
+  
+  const fetchProjects = async (userId: string) => {
     try {
       const response = await fetch(`/api/projects?user_id=${userId}`);
       if (response.ok) {
         const data = await response.json();
         setProjects(data);
         dataCache.setProjects(userId, data);
+        setProjectsLoaded(true);
       }
     } catch (error) {
       // Silently fail
@@ -93,8 +88,9 @@ export default function DashboardLayout({
     const userId = localStorage.getItem('userId');
     if (userId) {
       dataCache.invalidateProjects(userId);
+      setProjectsLoaded(false); // Reset to trigger reload
+      setProjectRefreshKey(prev => prev + 1);
     }
-    setProjectRefreshKey(prev => prev + 1);
   };
   
   // Build breadcrumb based on pathname

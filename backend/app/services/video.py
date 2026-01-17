@@ -330,11 +330,14 @@ class VideoGenerator:
 
             logger.info(f"Video generated: {output_video_path} ({video_size} bytes)")
 
+            # Store the actual rendered video duration (includes buffer time)
+            actual_duration_ms = int(total_duration * 1000)
+
             return VideoResult(
                 success=True,
                 video_path=output_video_path,
                 thumbnail_path=thumbnail_path if os.path.exists(thumbnail_path) else None,
-                duration_ms=duration_ms,
+                duration_ms=actual_duration_ms,
                 size_bytes=video_size,
             )
 

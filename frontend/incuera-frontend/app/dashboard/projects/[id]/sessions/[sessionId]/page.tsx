@@ -163,8 +163,9 @@ export default function SessionReplayPage() {
 
   const formatDuration = (seconds?: number) => {
     if (!seconds) return "N/A";
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
+    const totalSeconds = Math.round(seconds); // Round to nearest second
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
@@ -213,7 +214,7 @@ export default function SessionReplayPage() {
           <CardDescription className="truncate">{session?.url}</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
             <div>
               <p className="text-muted-foreground">Started</p>
               <p className="font-medium">
@@ -221,10 +222,6 @@ export default function SessionReplayPage() {
                   ? new Date(session.started_at).toLocaleString()
                   : "N/A"}
               </p>
-            </div>
-            <div>
-              <p className="text-muted-foreground">Duration</p>
-              <p className="font-medium">{formatDuration(session?.duration)}</p>
             </div>
             <div>
               <p className="text-muted-foreground">Events</p>
@@ -273,32 +270,29 @@ export default function SessionReplayPage() {
 
               <div className="flex items-center justify-between border-t pt-4">
                 <div className="flex gap-4 text-sm text-muted-foreground">
-                  <span>
-                    Duration:{" "}
-                    {formatDuration(
-                      videoStatus.video_duration_ms
-                        ? videoStatus.video_duration_ms / 1000
-                        : undefined
-                    )}
-                  </span>
                   <span>Size: {formatBytes(videoStatus.video_size_bytes)}</span>
                 </div>
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={handleGenerateVideo}
-                    disabled={regenerating}
-                  >
-                    <RefreshCw className={`h-4 w-4 mr-2 ${regenerating ? "animate-spin" : ""}`} />
-                    Regenerate
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
+                    onClick={async () => {
                       if (videoStatus.video_url) {
-                        window.open(videoStatus.video_url, "_blank");
+                        try {
+                          const response = await fetch(videoStatus.video_url);
+                          const blob = await response.blob();
+                          const url = window.URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = `session-${sessionId}-replay.webm`;
+                          document.body.appendChild(a);
+                          a.click();
+                          window.URL.revokeObjectURL(url);
+                          document.body.removeChild(a);
+                        } catch (error) {
+                          console.error("Download failed:", error);
+                          toast.error("Failed to download video");
+                        }
                       }
                     }}
                   >
