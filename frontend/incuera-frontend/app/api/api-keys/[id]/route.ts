@@ -7,8 +7,9 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
+  const params = await props.params;
   try {
     const response = await fetch(`${BACKEND_URL}/api/api-keys/${params.id}`, {
       method: 'DELETE',

@@ -20,7 +20,8 @@ import {
 } from '@/components/ui/sidebar';
 import { NewProjectDialog } from '@/components/new-project-dialog';
 import { Project } from '@/lib/api';
-import { dataCache } from '@/lib/cache';
+import { useProjects } from '@/hooks/use-queries';
+import { useQueryClient } from '@tanstack/react-query';
 
 // Context to share dialog state between sidebar and pages
 const NewProjectDialogContext = createContext<{
@@ -29,8 +30,8 @@ const NewProjectDialogContext = createContext<{
   refreshProjects: () => void;
 }>({
   open: false,
-  setOpen: () => {},
-  refreshProjects: () => {},
+  setOpen: () => { },
+  refreshProjects: () => { },
 });
 
 export const useNewProjectDialog = () => useContext(NewProjectDialogContext);
@@ -42,62 +43,32 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname();
   const [newProjectDialogOpen, setNewProjectDialogOpen] = useState(false);
-  const [projectRefreshKey, setProjectRefreshKey] = useState(0);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [projectsLoaded, setProjectsLoaded] = useState(false);
-  
+  const [userId, setUserId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    // Only access localStorage on client mount
+    setUserId(localStorage.getItem('userId'));
+  }, []);
+
+  const { data: projects = [] } = useProjects(userId);
+
   // Extract project ID from pathname
   const projectIdMatch = pathname.match(/\/dashboard\/projects\/([^\/]+)/);
   const currentProjectId = projectIdMatch ? projectIdMatch[1] : null;
   const currentProject = projects.find(p => p.id === currentProjectId);
-  
-  // Load projects once on mount, then use cache for all navigation
-  useEffect(() => {
-    const storedUserId = localStorage.getItem('userId');
-    if (!storedUserId || projectsLoaded) return;
 
-    // Try cache first
-    const cached = dataCache.getProjects(storedUserId);
-    if (cached && cached.length > 0) {
-      setProjects(cached);
-      setProjectsLoaded(true);
-      return;
-    }
-
-    // If no cache or refresh requested, fetch from API
-    if (projectRefreshKey === 0 || projectRefreshKey > 0) {
-      fetchProjects(storedUserId);
-    }
-  }, [projectsLoaded, projectRefreshKey]);
-  
-  const fetchProjects = async (userId: string) => {
-    try {
-      const response = await fetch(`/api/projects?user_id=${userId}`);
-      if (response.ok) {
-        const data = await response.json();
-        setProjects(data);
-        dataCache.setProjects(userId, data);
-        setProjectsLoaded(true);
-      }
-    } catch (error) {
-      // Silently fail
-    }
-  };
-  
-  const handleProjectCreated = () => {
-    const userId = localStorage.getItem('userId');
+  const handleProjectCacheInvalidation = () => {
     if (userId) {
-      dataCache.invalidateProjects(userId);
-      setProjectsLoaded(false); // Reset to trigger reload
-      setProjectRefreshKey(prev => prev + 1);
+      queryClient.invalidateQueries({ queryKey: ['projects', userId] });
     }
   };
-  
+
   // Build breadcrumb based on pathname
   const getBreadcrumbs = () => {
     const paths = pathname.split('/').filter(Boolean);
     const breadcrumbs = [];
-    
+
     if (paths[0] === 'dashboard') {
       // Only show Dashboard if we're not on a project page
       if (paths[1] !== 'projects' || !paths[2]) {
@@ -108,7 +79,7 @@ export default function DashboardLayout({
         // Use project name if available, otherwise fallback to "Project"
         const projectName = currentProject?.name || 'Project';
         breadcrumbs.push({ label: projectName, href: `/dashboard/projects/${paths[2]}` });
-        
+
         if (paths[3] === 'sessions') {
           breadcrumbs.push({ label: 'Sessions', href: pathname });
         } else if (paths[2] && !paths[3]) {
@@ -116,58 +87,58 @@ export default function DashboardLayout({
         }
       }
     }
-    
+
     return breadcrumbs;
   };
 
   const breadcrumbs = getBreadcrumbs();
 
   return (
-    <NewProjectDialogContext.Provider value={{ 
-      open: newProjectDialogOpen, 
+    <NewProjectDialogContext.Provider value={{
+      open: newProjectDialogOpen,
       setOpen: setNewProjectDialogOpen,
-      refreshProjects: handleProjectCreated,
+      refreshProjects: handleProjectCacheInvalidation,
     }}>
       <NewProjectDialog
         open={newProjectDialogOpen}
         onOpenChange={setNewProjectDialogOpen}
-        onProjectCreated={handleProjectCreated}
+        onProjectCreated={handleProjectCacheInvalidation}
       />
       <SidebarProvider>
         <AppSidebar />
         <SidebarInset>
-        <header className="flex h-16 shrink-0 items-center transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
-          <div className="flex items-center gap-3 px-4">
-            <SidebarTrigger className="-ml-1" />
-            <Separator
-              orientation="vertical"
-              className="h-4"
-            />
-            <Breadcrumb>
-              <BreadcrumbList className="gap-2">
-                {breadcrumbs.map((crumb, index) => (
-                  <React.Fragment key={`${crumb.href}-${index}`}>
-                    {index > 0 && <BreadcrumbSeparator className="hidden md:block" />}
-                    <BreadcrumbItem className={index === breadcrumbs.length - 1 ? '' : 'hidden md:block'}>
-                      {index === breadcrumbs.length - 1 ? (
-                        <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
-                      ) : (
-                        <BreadcrumbLink href={crumb.href}>
-                          {crumb.label}
-                        </BreadcrumbLink>
-                      )}
-                    </BreadcrumbItem>
-                  </React.Fragment>
-                ))}
-              </BreadcrumbList>
-            </Breadcrumb>
+          <header className="flex h-16 shrink-0 items-center transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+            <div className="flex items-center gap-3 px-4">
+              <SidebarTrigger className="-ml-1" />
+              <Separator
+                orientation="vertical"
+                className="h-4"
+              />
+              <Breadcrumb>
+                <BreadcrumbList className="gap-2">
+                  {breadcrumbs.map((crumb, index) => (
+                    <React.Fragment key={`${crumb.href}-${index}`}>
+                      {index > 0 && <BreadcrumbSeparator className="hidden md:block" />}
+                      <BreadcrumbItem className={index === breadcrumbs.length - 1 ? '' : 'hidden md:block'}>
+                        {index === breadcrumbs.length - 1 ? (
+                          <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
+                        ) : (
+                          <BreadcrumbLink href={crumb.href}>
+                            {crumb.label}
+                          </BreadcrumbLink>
+                        )}
+                      </BreadcrumbItem>
+                    </React.Fragment>
+                  ))}
+                </BreadcrumbList>
+              </Breadcrumb>
+            </div>
+          </header>
+          <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
+            {children}
           </div>
-        </header>
-        <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
-          {children}
-        </div>
-      </SidebarInset>
-    </SidebarProvider>
+        </SidebarInset>
+      </SidebarProvider>
     </NewProjectDialogContext.Provider>
   );
 }

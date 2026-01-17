@@ -20,7 +20,6 @@ async def queue_video_generation(session_id: str) -> bool:
         redis = await create_pool(redis_settings)
         await redis.enqueue_job("generate_session_video", session_id)
         await redis.close()
-        logger.info(f"Video generation job queued for session: {session_id}")
         return True
     except Exception as e:
         logger.error(f"Failed to queue video generation for session {session_id}: {e}", exc_info=True)

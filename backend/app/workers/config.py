@@ -25,13 +25,12 @@ redis_settings = parse_redis_url(settings.redis_url)
 
 async def startup(ctx):
     """Worker startup hook."""
-    logger.info("ARQ worker starting up...")
     ctx["startup_complete"] = True
 
 
 async def shutdown(ctx):
     """Worker shutdown hook."""
-    logger.info("ARQ worker shutting down...")
+    pass
 
 
 class WorkerSettings:

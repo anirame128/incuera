@@ -13,8 +13,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { apiClient } from '@/lib/api';
-import { dataCache } from '@/lib/cache';
+import { useCreateProject } from '@/hooks/use-queries';
 import { toast } from 'sonner';
 
 interface NewProjectDialogProps {
@@ -31,46 +30,36 @@ export function NewProjectDialog({
   const router = useRouter();
   const [name, setName] = useState('');
   const [domain, setDomain] = useState('');
-  const [loading, setLoading] = useState(false);
+  const { mutate: createProject, isPending: loading } = useCreateProject();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
 
-    try {
-      const project = await apiClient.createProject(name, domain || undefined);
-      const userId = localStorage.getItem('userId');
-      
-      // Invalidate projects cache
-      if (userId) {
-        dataCache.invalidateProjects(userId);
+    createProject(
+      { name, domain: domain || undefined },
+      {
+        onSuccess: (project) => {
+          toast.success('Project created successfully!');
+          setName('');
+          setDomain('');
+          onOpenChange(false);
+
+          if (onProjectCreated) {
+            onProjectCreated();
+          }
+
+          router.push(`/dashboard/projects/${project.id}`);
+        },
+        onError: () => {
+          toast.error('Failed to create project. Please try again.');
+        }
       }
-      
-      // Cache the new project
-      dataCache.setProject(project.id, project);
-      
-      toast.success('Project created successfully!');
-      setName('');
-      setDomain('');
-      onOpenChange(false);
-      
-      // Refresh projects list
-      if (onProjectCreated) {
-        onProjectCreated();
-      }
-      
-      // Navigate to the new project
-      router.push(`/dashboard/projects/${project.id}`);
-    } catch (error) {
-      toast.error('Failed to create project. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+    );
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent 
+      <DialogContent
         className="sm:max-w-lg"
         onInteractOutside={(e) => {
           if (loading) {

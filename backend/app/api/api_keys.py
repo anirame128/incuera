@@ -105,8 +105,6 @@ async def create_api_key(
         db.commit()
         db.refresh(new_key)
         
-        logger.info(f"Created API key {new_key.id} for project {request.project_id}")
-        
         return {
             "key": raw_key,  # Only returned once!
             "apiKey": APIKeyResponse.from_orm(new_key),
@@ -141,7 +139,6 @@ async def delete_api_key(
         db.delete(key)
         db.commit()
         
-        logger.info(f"Deleted API key {key_id}")
         return {"success": True}
     except HTTPException:
         raise

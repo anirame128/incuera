@@ -102,5 +102,4 @@ def get_project_from_api_key(
     if not project:
         raise not_found_error("Project")
     
-    logger.debug(f"Found project {project.id} from API key")
     return project

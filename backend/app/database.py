@@ -14,7 +14,7 @@ if settings.environment in ("development", "production"):
         engine = create_engine(
             settings.database_url,
             poolclass=NullPool,  # Required for pooler connections
-            echo=settings.environment == "development",
+            echo=False,  # Disable SQL query logging
         )
     else:
         # Direct connection for stationary servers
@@ -22,13 +22,13 @@ if settings.environment in ("development", "production"):
             settings.database_url,
             pool_size=20,
             max_overflow=10,
-            echo=settings.environment == "development",
+            echo=False,  # Disable SQL query logging
         )
 else:
     engine = create_engine(
         settings.database_url,
         poolclass=NullPool,
-        echo=True,
+        echo=False,  # Disable SQL query logging
     )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

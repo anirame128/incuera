@@ -60,9 +60,16 @@ import {
 } from '@/components/ui/form';
 import { MagicCard } from '@/components/ui/magic-card';
 import { AnimatedShinyText } from '@/components/ui/animated-shiny-text';
-import { apiClient, Project, APIKey } from '@/lib/api';
+import { Project, APIKey } from '@/lib/api';
+import {
+  useProject,
+  useAPIKeys,
+  useUpdateProject,
+  useDeleteProject,
+  useCreateAPIKey,
+  useDeleteAPIKey
+} from '@/hooks/use-queries';
 import { toast } from 'sonner';
-import { dataCache } from '@/lib/cache';
 
 const projectFormSchema = z.object({
   name: z.string().min(1, 'Project name is required').max(100, 'Project name must be less than 100 characters'),
@@ -82,14 +89,16 @@ export default function ProjectSettingsPage() {
   const params = useParams();
   const projectId = params.id as string;
 
-  const [project, setProject] = useState<Project | null>(null);
-  const [apiKeys, setAPIKeys] = useState<APIKey[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const { data: project, isLoading: projectLoading } = useProject(projectId);
+  const { data: apiKeys = [], isLoading: keysLoading } = useAPIKeys(projectId);
+  const { mutate: updateProject, isPending: saving } = useUpdateProject();
+  const { mutate: createAPIKey } = useCreateAPIKey();
+  const { mutate: deleteAPIKey } = useDeleteAPIKey();
+  const { mutate: deleteProject, isPending: deletingProject } = useDeleteProject();
+
   const [createKeyDialogOpen, setCreateKeyDialogOpen] = useState(false);
   const [newKey, setNewKey] = useState<{ key: string; apiKey: APIKey } | null>(null);
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
-  const [deletingProject, setDeletingProject] = useState(false);
 
   const projectForm = useForm<ProjectFormValues>({
     resolver: zodResolver(projectFormSchema),
@@ -112,102 +121,74 @@ export default function ProjectSettingsPage() {
       router.push('/login');
       return;
     }
+  }, [router]);
 
-    loadData();
-  }, [projectId, router]);
-
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      const [projectData, keysData] = await Promise.all([
-        apiClient.getProject(projectId),
-        apiClient.getAPIKeys(projectId),
-      ]);
-
-      setProject(projectData);
-      setAPIKeys(keysData);
+  useEffect(() => {
+    if (project) {
       projectForm.reset({
-        name: projectData.name,
-        domain: projectData.domain || '',
+        name: project.name,
+        domain: project.domain || '',
       });
-    } catch (error) {
-      toast.error('Failed to load project data');
-      console.error(error);
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [project, projectForm]);
 
-  const onProjectSubmit = async (values: ProjectFormValues) => {
-    try {
-      setSaving(true);
-      const updated = await apiClient.updateProject(
-        projectId,
-        values.name,
-        values.domain || undefined
-      );
-      setProject(updated);
-      
-      // Invalidate cache
-      const userId = localStorage.getItem('userId');
-      if (userId) {
-        dataCache.invalidateProjects(userId);
-        dataCache.setProject(projectId, updated);
+  const loading = projectLoading || keysLoading;
+
+  const onProjectSubmit = (values: ProjectFormValues) => {
+    updateProject(
+      { id: projectId, name: values.name, domain: values.domain || undefined },
+      {
+        onSuccess: () => {
+          toast.success('Project updated successfully');
+        },
+        onError: () => {
+          toast.error('Failed to update project');
+        }
       }
-
-      toast.success('Project updated successfully');
-    } catch (error) {
-      toast.error('Failed to update project');
-      console.error(error);
-    } finally {
-      setSaving(false);
-    }
+    );
   };
 
-  const onCreateAPIKey = async (values: APIKeyFormValues) => {
-    try {
-      const result = await apiClient.createAPIKey(projectId, values.name);
-      setNewKey(result);
-      setCreateKeyDialogOpen(false);
-      apiKeyForm.reset();
-      await loadData();
-      toast.success('API key created successfully');
-    } catch (error) {
-      toast.error('Failed to create API key');
-      console.error(error);
-    }
-  };
-
-  const onDeleteAPIKey = async (keyId: string) => {
-    try {
-      await apiClient.deleteAPIKey(keyId);
-      await loadData();
-      toast.success('API key deleted successfully');
-    } catch (error) {
-      toast.error('Failed to delete API key');
-      console.error(error);
-    }
-  };
-
-  const onDeleteProject = async () => {
-    try {
-      setDeletingProject(true);
-      await apiClient.deleteProject(projectId);
-      
-      // Invalidate cache
-      const userId = localStorage.getItem('userId');
-      if (userId) {
-        dataCache.invalidateProjects(userId);
+  const onCreateAPIKey = (values: APIKeyFormValues) => {
+    createAPIKey(
+      { projectId, name: values.name },
+      {
+        onSuccess: (result) => {
+          setNewKey(result);
+          setCreateKeyDialogOpen(false);
+          apiKeyForm.reset();
+          toast.success('API key created successfully');
+        },
+        onError: () => {
+          toast.error('Failed to create API key');
+        }
       }
+    );
+  };
 
-      toast.success('Project deleted successfully');
-      router.push('/dashboard');
-    } catch (error) {
-      toast.error('Failed to delete project');
-      console.error(error);
-    } finally {
-      setDeletingProject(false);
-    }
+  const onDeleteAPIKey = (keyId: string) => {
+    deleteAPIKey(
+      { keyId, projectId },
+      {
+        onSuccess: () => {
+          toast.success('API key deleted successfully');
+        },
+        onError: () => {
+          toast.error('Failed to delete API key');
+        }
+      }
+    );
+  };
+
+  const onDeleteProject = () => {
+    deleteProject(projectId, {
+      onSuccess: () => {
+        toast.success('Project deleted successfully');
+        router.push('/dashboard');
+      },
+      onError: () => {
+        toast.error('Failed to delete project');
+      }
+    });
   };
 
   const copyToClipboard = async (text: string, keyId: string) => {
@@ -387,11 +368,10 @@ export default function ProjectSettingsPage() {
                         </TableCell>
                         <TableCell>
                           <span
-                            className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                              key.is_active
-                                ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                                : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'
-                            }`}
+                            className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${key.is_active
+                              ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                              : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'
+                              }`}
                           >
                             {key.is_active ? 'Active' : 'Inactive'}
                           </span>

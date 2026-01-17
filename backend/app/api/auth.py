@@ -58,8 +58,6 @@ async def login(
         if not password_valid:
             raise authentication_error("Invalid credentials")
         
-        logger.info(f"User {user.email} logged in successfully")
-        
         return LoginResponse(
             user={
                 "id": str(user.id),

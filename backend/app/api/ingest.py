@@ -89,10 +89,6 @@ async def ingest_events(
             
             db.commit()
         
-        logger.info(
-            f"Ingested {len(events_to_insert)} events for session {request.sessionId}"
-        )
-        
         return IngestResponse(
             success=True,
             message="Events ingested successfully",

@@ -113,9 +113,7 @@ async def generate_session_video(ctx: Dict[str, Any], session_id: str) -> Dict[s
             )
             if thumb_result.success:
                 session.video_thumbnail_url = thumb_result.url
-            else:
-                logger.warning(f"Thumbnail upload failed: {thumb_result.error}")
-                # We don't fail the whole process for just a thumbnail failure
+            # Thumbnail upload failure is non-critical, continue without it
         
         # Upload keyframes
         if result.keyframes_path and upload_success:
@@ -124,8 +122,7 @@ async def generate_session_video(ctx: Dict[str, Any], session_id: str) -> Dict[s
             )
             if keyframes_result.success:
                 session.keyframes_url = keyframes_result.url
-            else:
-                logger.warning(f"Keyframes upload failed: {keyframes_result.error}")
+            # Keyframes upload failure is non-critical, continue without it
 
         if not upload_success:
             session.status = SessionStatus.FAILED
@@ -140,11 +137,6 @@ async def generate_session_video(ctx: Dict[str, Any], session_id: str) -> Dict[s
         session.video_duration_ms = result.duration_ms
         session.video_size_bytes = result.size_bytes
         db.commit()
-
-        logger.info(
-            f"Video generated and uploaded successfully for session {session_id}: "
-            f"{result.duration_ms}ms, {result.size_bytes} bytes"
-        )
 
         return {
             "success": True,

@@ -171,8 +171,6 @@ class VideoGenerator:
         base_url = f"https://cdn.jsdelivr.net/npm/rrweb-player@{version}/dist"
         
         try:
-            logger.info(f"Fetching rrweb-player assets from {base_url}...")
-            
             # Fetch JS
             with urllib.request.urlopen(f"{base_url}/index.js") as response:
                 script_content = response.read().decode('utf-8')
@@ -180,8 +178,6 @@ class VideoGenerator:
             # Fetch CSS
             with urllib.request.urlopen(f"{base_url}/style.css") as response:
                 style_content = response.read().decode('utf-8')
-                
-            logger.info("Successfully fetched rrweb-player assets")
             return script_content, style_content
             
         except Exception as e:
@@ -228,8 +224,6 @@ class VideoGenerator:
             # Add buffer time for loading and ending
             total_duration = min(duration_sec + 3, self.max_duration_seconds)
 
-            logger.info(f"Rendering {total_duration:.2f} seconds of video for session {session_id}")
-
             # Use Playwright to record the video
             from playwright.async_api import async_playwright
 
@@ -248,8 +242,7 @@ class VideoGenerator:
                 )
                 page = await context.new_page()
 
-                # Capture browser console logs for debugging
-                page.on("console", lambda msg: logger.debug(f"Browser console [{msg.type}]: {msg.text}"))
+                # Capture browser page errors
                 page.on("pageerror", lambda err: logger.error(f"Browser page error: {err}"))
 
                 # Load static assets
@@ -265,7 +258,6 @@ class VideoGenerator:
                 # Load the player HTML using set_content (more reliable than file://)
                 # This allows the page to load external scripts from CDN
                 await page.set_content(html_content, wait_until="networkidle")
-                logger.info("Loaded player HTML via set_content")
 
                 # Wait for rrwebPlayer library to load
                 try:
@@ -281,8 +273,6 @@ class VideoGenerator:
                         await context.close()
                         await browser.close()
                         return VideoResult(success=False, error=f"Failed to load replay player: {load_error}")
-
-                    logger.info("rrweb-player library loaded successfully")
                 except Exception as e:
                     # Try to get any error info from the page
                     try:
@@ -296,7 +286,6 @@ class VideoGenerator:
                     return VideoResult(success=False, error="Failed to load replay player - timeout")
 
                 # Start playback with events
-                logger.info(f"Starting playback with {len(events)} events")
                 playback_result = await page.evaluate(f"startPlayback({json.dumps(events)})")
 
                 # Wait for playback to complete
@@ -327,8 +316,6 @@ class VideoGenerator:
 
             # Get file size
             video_size = os.path.getsize(output_video_path)
-
-            logger.info(f"Video generated: {output_video_path} ({video_size} bytes)")
 
             # Store the actual rendered video duration (includes buffer time)
             actual_duration_ms = int(total_duration * 1000)
@@ -371,4 +358,5 @@ class VideoGenerator:
             )
             await process.communicate()
         except Exception as e:
-            logger.warning(f"Failed to generate thumbnail: {e}")
+            # Thumbnail generation failed, but continue without it
+            pass

@@ -38,6 +38,7 @@ export interface Session {
   url: string;
   started_at: string;
   event_count: number;
+  duration?: number;
 }
 
 class ApiClient {
@@ -65,8 +66,6 @@ class ApiClient {
 
   // Authentication
   async login(email: string, password: string): Promise<{ user: User; token?: string }> {
-    // For now, we'll use a simple approach
-    // In production, implement proper JWT authentication
     return this.request('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),

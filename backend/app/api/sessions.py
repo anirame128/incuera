@@ -97,8 +97,6 @@ async def start_session(
         db.commit()
         db.refresh(session)
         
-        logger.info(f"Started session {request.sessionId} for project {project.id}")
-        
         return SessionStartResponse(
             success=True,
             message="Session started successfully",

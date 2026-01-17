@@ -11,7 +11,7 @@ import {
   PlusIcon,
 } from 'lucide-react';
 import { Project } from '@/lib/api';
-import { dataCache } from '@/lib/cache';
+import { useProjects } from '@/hooks/use-queries';
 import {
   Sidebar,
   SidebarContent,
@@ -33,53 +33,28 @@ export function AppSidebar() {
   const router = useRouter();
   const pathname = usePathname();
   const { theme } = useTheme();
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(true);
+
   const [userId, setUserId] = useState<string | null>(null);
   const { setOpen: setNewProjectDialogOpen } = useNewProjectDialog();
 
   // Extract project ID from pathname
   const projectIdMatch = pathname.match(/\/dashboard\/projects\/([^\/]+)/);
   const currentProjectId = projectIdMatch ? projectIdMatch[1] : null;
-  const currentProject = projects.find(p => p.id === currentProjectId);
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     const storedUserId = localStorage.getItem('userId');
-    
+
     if (!storedUser || !storedUserId) {
       router.push('/login');
       return;
     }
 
     setUserId(storedUserId);
-    fetchProjects(storedUserId);
   }, [router]);
 
-  const fetchProjects = async (userId: string, useCache = true) => {
-    // Check cache first
-    if (useCache) {
-      const cached = dataCache.getProjects(userId);
-      if (cached) {
-        setProjects(cached);
-        setLoading(false);
-        return;
-      }
-    }
-
-    try {
-      const response = await fetch(`/api/projects?user_id=${userId}`);
-      if (response.ok) {
-        const data = await response.json();
-        setProjects(data);
-        dataCache.setProjects(userId, data);
-      }
-    } catch (error) {
-      // Silently fail
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { data: projects = [], isLoading: loading } = useProjects(userId);
+  const currentProject = projects.find(p => p.id === currentProjectId);
 
   const handleLogout = () => {
     localStorage.removeItem('user');
@@ -91,12 +66,7 @@ export function AppSidebar() {
     setNewProjectDialogOpen(true);
   };
 
-  // Refresh projects when pathname changes (e.g., after creating a project)
-  useEffect(() => {
-    if (userId && pathname === '/dashboard') {
-      fetchProjects(userId);
-    }
-  }, [userId, pathname]);
+
 
   return (
     <Sidebar>

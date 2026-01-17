@@ -7,8 +7,9 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
+  const params = await props.params;
   try {
     const response = await fetch(`${BACKEND_URL}/api/projects/${params.id}`, {
       headers: {
@@ -35,11 +36,12 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
+  const params = await props.params;
   try {
     const body = await request.json();
-    
+
     const response = await fetch(`${BACKEND_URL}/api/projects/${params.id}`, {
       method: 'PUT',
       headers: {
@@ -67,8 +69,9 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
+  const params = await props.params;
   try {
     const response = await fetch(`${BACKEND_URL}/api/projects/${params.id}`, {
       method: 'DELETE',

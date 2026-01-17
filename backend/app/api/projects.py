@@ -99,7 +99,6 @@ async def create_project(
         db.commit()
         db.refresh(new_project)
         
-        logger.info(f"Created project {new_project.id} for user {project.user_id}")
         return ProjectResponse.from_orm(new_project)
     except ValueError as e:
         db.rollback()
@@ -161,7 +160,6 @@ async def update_project(
         db.commit()
         db.refresh(project)
         
-        logger.info(f"Updated project {project_id}")
         return ProjectResponse.from_orm(project)
     except HTTPException:
         raise
@@ -193,7 +191,6 @@ async def delete_project(
         db.delete(project)
         db.commit()
         
-        logger.info(f"Deleted project {project_id}")
         return {"message": "Project deleted successfully"}
     except HTTPException:
         raise

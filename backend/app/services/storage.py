@@ -59,7 +59,6 @@ class StorageService:
                     bucket_data = check_response.json()
                     self._bucket_public = bucket_data.get("public", False)
                     self._bucket_checked = True
-                    logger.info(f"Bucket {self.BUCKET_NAME} exists, public: {self._bucket_public}")
                     return True
                 
                 # Bucket doesn't exist, create it
@@ -76,7 +75,6 @@ class StorageService:
                     )
                     
                     if create_response.status_code in [200, 201]:
-                        logger.info(f"Created storage bucket: {self.BUCKET_NAME} (public: True)")
                         self._bucket_public = True
                         self._bucket_checked = True
                         return True
@@ -259,9 +257,6 @@ class StorageService:
                 )
                 
                 if list_response.status_code != 200:
-                    logger.warning(
-                        f"Failed to list files for deletion: {list_response.status_code}"
-                    )
                     return False
                 
                 files = list_response.json()
@@ -286,9 +281,6 @@ class StorageService:
                         )
                         
                         if delete_response.status_code not in [200, 204]:
-                            logger.warning(
-                                f"Failed to delete files: {delete_response.status_code}"
-                            )
                             return False
 
             return True
