@@ -37,9 +37,9 @@ export function AppSidebar() {
   const [userId, setUserId] = useState<string | null>(null);
   const { setOpen: setNewProjectDialogOpen } = useNewProjectDialog();
 
-  // Extract project ID from pathname
-  const projectIdMatch = pathname.match(/\/dashboard\/projects\/([^\/]+)/);
-  const currentProjectId = projectIdMatch ? projectIdMatch[1] : null;
+  // Extract project slug from pathname
+  const projectSlugMatch = pathname.match(/\/dashboard\/projects\/([^\/]+)/);
+  const currentProjectSlug = projectSlugMatch ? projectSlugMatch[1] : null;
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -54,7 +54,7 @@ export function AppSidebar() {
   }, [router]);
 
   const { data: projects = [], isLoading: loading } = useProjects(userId);
-  const currentProject = projects.find(p => p.id === currentProjectId);
+  const currentProject = projects.find(p => p.slug === currentProjectSlug);
 
   const handleLogout = () => {
     localStorage.removeItem('user');
@@ -88,7 +88,7 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        {currentProjectId ? (
+        {currentProjectSlug ? (
           // Show project-specific navigation
           <SidebarGroup>
             <SidebarGroupLabel>Project</SidebarGroupLabel>
@@ -97,9 +97,9 @@ export function AppSidebar() {
                 <SidebarMenuItem>
                   <SidebarMenuButton
                     asChild
-                    isActive={pathname === `/dashboard/projects/${currentProjectId}`}
+                    isActive={pathname === `/dashboard/projects/${currentProjectSlug}`}
                   >
-                    <a href={`/dashboard/projects/${currentProjectId}`}>
+                    <a href={`/dashboard/projects/${currentProjectSlug}`}>
                       <SettingsIcon />
                       <span>Settings</span>
                     </a>
@@ -108,9 +108,9 @@ export function AppSidebar() {
                 <SidebarMenuItem>
                   <SidebarMenuButton
                     asChild
-                    isActive={pathname === `/dashboard/projects/${currentProjectId}/sessions`}
+                    isActive={pathname === `/dashboard/projects/${currentProjectSlug}/sessions`}
                   >
-                    <a href={`/dashboard/projects/${currentProjectId}/sessions`}>
+                    <a href={`/dashboard/projects/${currentProjectSlug}/sessions`}>
                       <PlayIcon />
                       <span>Session Replays</span>
                     </a>
@@ -152,9 +152,9 @@ export function AppSidebar() {
                     <SidebarMenuItem key={project.id}>
                       <SidebarMenuButton
                         asChild
-                        isActive={currentProjectId === project.id}
+                        isActive={currentProjectSlug === project.slug}
                       >
-                        <a href={`/dashboard/projects/${project.id}`}>
+                        <a href={`/dashboard/projects/${project.slug}`}>
                           <FolderIcon />
                           <span>{project.name}</span>
                         </a>

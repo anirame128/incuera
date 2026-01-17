@@ -39,7 +39,7 @@ interface VideoStatus {
 export default function SessionReplayPage() {
   const router = useRouter();
   const params = useParams();
-  const projectId = params.id as string;
+  const projectSlug = params.id as string; // Directory is [id], but value is slug
   const sessionId = params.sessionId as string;
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -47,6 +47,7 @@ export default function SessionReplayPage() {
   const [videoStatus, setVideoStatus] = useState<VideoStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
+  const lastFetchedRef = useRef<string | null>(null);
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -55,14 +56,23 @@ export default function SessionReplayPage() {
       return;
     }
 
+    // Prevent duplicate calls for the same session (React StrictMode in dev causes double renders)
+    const fetchKey = `${projectSlug}-${sessionId}`;
+    if (lastFetchedRef.current === fetchKey) {
+      return;
+    }
+    lastFetchedRef.current = fetchKey;
+
     fetchData();
 
     return () => {
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
       }
     };
-  }, [projectId, sessionId, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectSlug, sessionId]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -192,7 +202,7 @@ export default function SessionReplayPage() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => router.push(`/dashboard/projects/${projectId}/sessions`)}
+            onClick={() => router.push(`/dashboard/projects/${projectSlug}/sessions`)}
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back

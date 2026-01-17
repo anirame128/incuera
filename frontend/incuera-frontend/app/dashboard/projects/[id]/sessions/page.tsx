@@ -24,7 +24,7 @@ export default function SessionsPage() {
   const router = useRouter();
   const params = useParams();
   const { theme } = useTheme();
-  const projectId = params.id as string;
+  const projectSlug = params.id as string; // Directory is [id], but value is slug
 
   const [sessions, setSessions] = useState<SessionWithStatus[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,20 +37,39 @@ export default function SessionsPage() {
       return;
     }
 
+    if (!projectSlug) {
+      return; // Wait for params to be available
+    }
+
     fetchAPIKey();
-  }, [projectId, router]);
+  }, [projectSlug, router]);
 
   const fetchAPIKey = async () => {
+    if (!projectSlug) {
+      return;
+    }
+    
     try {
-      const response = await fetch(`/api/api-keys?project_id=${projectId}`);
+      const storedUserId = localStorage.getItem('userId');
+      if (!storedUserId) {
+        fetchSessions('');
+        return;
+      }
+      const response = await fetch(`/api/api-keys?project_slug=${encodeURIComponent(projectSlug)}&user_id=${storedUserId}`);
       if (response.ok) {
         const keys = await response.json();
         const activeKey = keys.find((k: any) => k.is_active);
         if (activeKey) {
-          const storedKey = localStorage.getItem(`apiKey_${projectId}`);
-          if (storedKey) {
-            setApiKey(storedKey);
-            fetchSessions(storedKey);
+          // Use project ID for API key storage (internal)
+          const projectId = keys[0]?.project_id;
+          if (projectId) {
+            const storedKey = localStorage.getItem(`apiKey_${projectId}`);
+            if (storedKey) {
+              setApiKey(storedKey);
+              fetchSessions(storedKey);
+            } else {
+              fetchSessions('');
+            }
           } else {
             fetchSessions('');
           }
@@ -66,11 +85,24 @@ export default function SessionsPage() {
   };
 
   const fetchSessions = async (key: string) => {
+    if (!projectSlug) {
+      return;
+    }
+    
     try {
-      const response = await fetch(`/api/sessions?project_id=${projectId}`, {
-        headers: {
-          'X-API-Key': key,
-        },
+      const storedUserId = localStorage.getItem('userId');
+      const headers: Record<string, string> = {};
+      
+      if (key) {
+        headers['X-API-Key'] = key;
+      }
+      
+      if (storedUserId) {
+        headers['X-User-ID'] = storedUserId;
+      }
+      
+      const response = await fetch(`/api/sessions?project_slug=${encodeURIComponent(projectSlug)}`, {
+        headers,
       });
 
       if (response.ok) {
@@ -135,7 +167,7 @@ export default function SessionsPage() {
   };
 
   const handleViewReplay = (sessionId: string) => {
-    router.push(`/dashboard/projects/${projectId}/sessions/${encodeURIComponent(sessionId)}`);
+    router.push(`/dashboard/projects/${projectSlug}/sessions/${encodeURIComponent(sessionId)}`);
   };
 
   return (

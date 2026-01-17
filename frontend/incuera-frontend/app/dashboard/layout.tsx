@@ -53,10 +53,10 @@ export default function DashboardLayout({
 
   const { data: projects = [] } = useProjects(userId);
 
-  // Extract project ID from pathname
-  const projectIdMatch = pathname.match(/\/dashboard\/projects\/([^\/]+)/);
-  const currentProjectId = projectIdMatch ? projectIdMatch[1] : null;
-  const currentProject = projects.find(p => p.id === currentProjectId);
+  // Extract project slug from pathname
+  const projectSlugMatch = pathname.match(/\/dashboard\/projects\/([^\/]+)/);
+  const currentProjectSlug = projectSlugMatch ? projectSlugMatch[1] : null;
+  const currentProject = projects.find(p => p.slug === currentProjectSlug);
 
   const handleProjectCacheInvalidation = () => {
     if (userId) {
@@ -78,7 +78,7 @@ export default function DashboardLayout({
         breadcrumbs.push({ label: 'Projects', href: '/dashboard' });
         // Use project name if available, otherwise fallback to "Project"
         const projectName = currentProject?.name || 'Project';
-        breadcrumbs.push({ label: projectName, href: `/dashboard/projects/${paths[2]}` });
+        breadcrumbs.push({ label: projectName, href: `/dashboard/projects/${currentProjectSlug || paths[2]}` });
 
         if (paths[3] === 'sessions') {
           breadcrumbs.push({ label: 'Sessions', href: pathname });

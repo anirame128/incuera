@@ -76,7 +76,7 @@ export default function DashboardPage() {
           {projects.map((project) => (
             <Link
               key={project.id}
-              href={`/dashboard/projects/${project.id}`}
+              href={`/dashboard/projects/${project.slug}`}
               className="block"
             >
               <Card className="h-full border-none p-0 shadow-none">

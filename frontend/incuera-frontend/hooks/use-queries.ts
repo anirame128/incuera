@@ -4,9 +4,9 @@ import { apiClient, Project, APIKey, Session } from '@/lib/api';
 // Query Keys
 export const queryKeys = {
     projects: (userId: string) => ['projects', userId],
-    project: (projectId: string) => ['project', projectId],
-    apiKeys: (projectId: string) => ['apiKeys', projectId],
-    sessions: (projectId: string) => ['sessions', projectId],
+    project: (projectSlug: string) => ['project', projectSlug],
+    apiKeys: (projectSlug: string) => ['apiKeys', projectSlug],
+    sessions: (projectSlug: string) => ['sessions', projectSlug],
 };
 
 // Projects
@@ -18,11 +18,11 @@ export function useProjects(userId: string | null) {
     });
 }
 
-export function useProject(projectId: string) {
+export function useProject(projectSlug: string) {
     return useQuery({
-        queryKey: queryKeys.project(projectId),
-        queryFn: () => apiClient.getProject(projectId),
-        enabled: !!projectId,
+        queryKey: queryKeys.project(projectSlug),
+        queryFn: () => apiClient.getProject(projectSlug),
+        enabled: !!projectSlug,
     });
 }
 
@@ -46,14 +46,11 @@ export function useUpdateProject() {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: (data: { id: string; name: string; domain?: string }) =>
-            apiClient.updateProject(data.id, data.name, data.domain),
+        mutationFn: (data: { slug: string; name: string; domain?: string }) =>
+            apiClient.updateProject(data.slug, data.name, data.domain),
         onSuccess: (updatedProject) => {
-            queryClient.setQueryData(queryKeys.project(updatedProject.id), updatedProject);
-            queryClient.invalidateQueries({ queryKey: queryKeys.projects('') }); // Optimistic update might be better but this is fine
-            // Ideally we should know the userId to invalidate the list more precisely, 
-            // but 'projects' key usually needs a userId. 
-            // We can invalidate all 'projects' queries or pass userId in variables.
+            queryClient.setQueryData(queryKeys.project(updatedProject.slug), updatedProject);
+            queryClient.invalidateQueries({ queryKey: queryKeys.projects('') });
         },
     });
 }
@@ -62,23 +59,20 @@ export function useDeleteProject() {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: (projectId: string) => apiClient.deleteProject(projectId),
-        onSuccess: (_, projectId) => {
-            // We can't easily invalidate the specific user's project list without the userId here.
-            // But typically we redirect after delete anyway.
-            // A 'soft' invalidation of everything 'projects' works:
+        mutationFn: (projectSlug: string) => apiClient.deleteProject(projectSlug),
+        onSuccess: (_, projectSlug) => {
             queryClient.invalidateQueries({ queryKey: ['projects'] });
-            queryClient.removeQueries({ queryKey: queryKeys.project(projectId) });
+            queryClient.removeQueries({ queryKey: queryKeys.project(projectSlug) });
         },
     });
 }
 
 // API Keys
-export function useAPIKeys(projectId: string) {
+export function useAPIKeys(projectSlug: string) {
     return useQuery({
-        queryKey: queryKeys.apiKeys(projectId),
-        queryFn: () => apiClient.getAPIKeys(projectId),
-        enabled: !!projectId,
+        queryKey: queryKeys.apiKeys(projectSlug),
+        queryFn: () => apiClient.getAPIKeys(projectSlug),
+        enabled: !!projectSlug,
     });
 }
 
@@ -98,19 +92,19 @@ export function useDeleteAPIKey() {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: (data: { keyId: string; projectId: string }) =>
+        mutationFn: (data: { keyId: string; projectSlug: string }) =>
             apiClient.deleteAPIKey(data.keyId),
         onSuccess: (_, variables) => {
-            queryClient.invalidateQueries({ queryKey: queryKeys.apiKeys(variables.projectId) });
+            queryClient.invalidateQueries({ queryKey: queryKeys.apiKeys(variables.projectSlug) });
         },
     });
 }
 
 // Sessions
-export function useSessions(projectId: string) {
+export function useSessions(projectSlug: string) {
     return useQuery({
-        queryKey: queryKeys.sessions(projectId),
-        queryFn: () => apiClient.getSessions(projectId),
-        enabled: !!projectId,
+        queryKey: queryKeys.sessions(projectSlug),
+        queryFn: () => apiClient.getSessions(projectSlug),
+        enabled: !!projectSlug,
     });
 }

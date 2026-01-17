@@ -87,10 +87,10 @@ type APIKeyFormValues = z.infer<typeof apiKeyFormSchema>;
 export default function ProjectSettingsPage() {
   const router = useRouter();
   const params = useParams();
-  const projectId = params.id as string;
+  const projectSlug = params.id as string; // Directory is [id], but value is slug
 
-  const { data: project, isLoading: projectLoading } = useProject(projectId);
-  const { data: apiKeys = [], isLoading: keysLoading } = useAPIKeys(projectId);
+  const { data: project, isLoading: projectLoading } = useProject(projectSlug);
+  const { data: apiKeys = [], isLoading: keysLoading } = useAPIKeys(projectSlug);
   const { mutate: updateProject, isPending: saving } = useUpdateProject();
   const { mutate: createAPIKey } = useCreateAPIKey();
   const { mutate: deleteAPIKey } = useDeleteAPIKey();
@@ -136,7 +136,7 @@ export default function ProjectSettingsPage() {
 
   const onProjectSubmit = (values: ProjectFormValues) => {
     updateProject(
-      { id: projectId, name: values.name, domain: values.domain || undefined },
+      { slug: projectSlug, name: values.name, domain: values.domain || undefined },
       {
         onSuccess: () => {
           toast.success('Project updated successfully');
@@ -149,8 +149,9 @@ export default function ProjectSettingsPage() {
   };
 
   const onCreateAPIKey = (values: APIKeyFormValues) => {
+    if (!project) return;
     createAPIKey(
-      { projectId, name: values.name },
+      { projectId: project.id, name: values.name },
       {
         onSuccess: (result) => {
           setNewKey(result);
@@ -167,7 +168,7 @@ export default function ProjectSettingsPage() {
 
   const onDeleteAPIKey = (keyId: string) => {
     deleteAPIKey(
-      { keyId, projectId },
+      { keyId, projectSlug },
       {
         onSuccess: () => {
           toast.success('API key deleted successfully');
@@ -180,7 +181,7 @@ export default function ProjectSettingsPage() {
   };
 
   const onDeleteProject = () => {
-    deleteProject(projectId, {
+    deleteProject(projectSlug, {
       onSuccess: () => {
         toast.success('Project deleted successfully');
         router.push('/dashboard');

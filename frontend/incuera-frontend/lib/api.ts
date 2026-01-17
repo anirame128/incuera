@@ -15,6 +15,7 @@ export interface Project {
   id: string;
   user_id: string;
   name: string;
+  slug: string;
   domain: string | null;
   created_at: string;
 }
@@ -42,18 +43,40 @@ export interface Session {
 }
 
 class ApiClient {
+  private getUserId(): string | null {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('userId');
+    }
+    return null;
+  }
+
   private async request<T>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
     // Use relative paths to hit Next.js API routes which proxy to backend
-    const url = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    let url = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    
+    // Add user_id to query params if not already present
+    const userId = this.getUserId();
+    if (userId && !url.includes('user_id=')) {
+      const separator = url.includes('?') ? '&' : '?';
+      url = `${url}${separator}user_id=${userId}`;
+    }
+    
+    // Add user_id to headers for endpoints that need it
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(options.headers as Record<string, string> || {}),
+    };
+    
+    if (userId && !headers['X-User-ID']) {
+      headers['X-User-ID'] = userId;
+    }
+    
     const response = await fetch(url, {
       ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
+      headers,
     });
 
     if (!response.ok) {
@@ -88,26 +111,27 @@ class ApiClient {
     });
   }
 
-  async getProject(projectId: string): Promise<Project> {
-    return this.request(`/api/projects/${projectId}`);
+  async getProject(projectSlug: string): Promise<Project> {
+    return this.request(`/api/projects/${projectSlug}`);
   }
 
-  async updateProject(projectId: string, name: string, domain?: string): Promise<Project> {
-    return this.request(`/api/projects/${projectId}`, {
+  async updateProject(projectSlug: string, name: string, domain?: string): Promise<Project> {
+    return this.request(`/api/projects/${projectSlug}`, {
       method: 'PUT',
       body: JSON.stringify({ name, domain }),
     });
   }
 
-  async deleteProject(projectId: string): Promise<void> {
-    return this.request(`/api/projects/${projectId}`, {
+  async deleteProject(projectSlug: string): Promise<void> {
+    return this.request(`/api/projects/${projectSlug}`, {
       method: 'DELETE',
     });
   }
 
   // API Keys
-  async getAPIKeys(projectId: string): Promise<APIKey[]> {
-    return this.request(`/api/api-keys?project_id=${projectId}`);
+  async getAPIKeys(projectSlug: string): Promise<APIKey[]> {
+    // user_id is automatically added by the request method
+    return this.request(`/api/api-keys?project_slug=${projectSlug}`);
   }
 
   async createAPIKey(projectId: string, name: string): Promise<{ key: string; apiKey: APIKey }> {
@@ -124,8 +148,8 @@ class ApiClient {
   }
 
   // Sessions
-  async getSessions(projectId: string): Promise<Session[]> {
-    return this.request(`/api/sessions?project_id=${projectId}`);
+  async getSessions(projectSlug: string): Promise<Session[]> {
+    return this.request(`/api/sessions?project_slug=${projectSlug}`);
   }
 }
 

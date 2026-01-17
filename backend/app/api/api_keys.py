@@ -6,10 +6,10 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from app.database import get_db
-from app.models import APIKey
+from app.models import APIKey, Project
 from app.utils.hashing import hash_api_key, generate_api_key
 from app.utils.logger import logger
-from app.utils.exceptions import not_found_error, validation_error, handle_database_error
+from app.utils.exceptions import not_found_error, validation_error, handle_database_error, forbidden_error
 from app.utils.db import get_by_id
 
 router = APIRouter(prefix="/api/api-keys", tags=["api-keys"])
@@ -48,26 +48,37 @@ class APIKeyResponse(BaseModel):
 
 @router.get("", response_model=list[APIKeyResponse])
 async def get_api_keys(
-    project_id: str = Query(..., description="Project ID"),
+    project_slug: str = Query(..., description="Project slug"),
+    user_id: str = Query(..., description="User ID"),
     db: Session = Depends(get_db),
 ) -> list[APIKeyResponse]:
     """
     Get all API keys for a project.
     
     Args:
-        project_id: The project ID
+        project_slug: The project slug
+        user_id: User ID (must own the project)
         db: Database session
         
     Returns:
         List of API keys for the project
     """
     try:
-        keys = db.query(APIKey).filter(APIKey.project_id == uuid.UUID(project_id)).all()
+        project = db.query(Project).filter(
+            Project.slug == project_slug,
+            Project.user_id == uuid.UUID(user_id)
+        ).first()
+        if not project:
+            raise not_found_error("Project")
+        
+        keys = db.query(APIKey).filter(APIKey.project_id == project.id).all()
         return [APIKeyResponse.from_orm(k) for k in keys]
     except ValueError:
-        raise validation_error("Invalid project ID format")
+        raise validation_error("Invalid user ID format")
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Failed to get API keys for project {project_id}: {e}", exc_info=True)
+        logger.error(f"Failed to get API keys: {e}", exc_info=True)
         raise handle_database_error(e, "get_api_keys")
 
 

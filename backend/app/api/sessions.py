@@ -2,7 +2,8 @@
 import uuid
 from datetime import datetime
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Header
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Header, Request
+
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -10,6 +11,7 @@ from app.models.session import Session as SessionModel
 from app.models.event import Event
 from app.models.project import Project
 from app.auth.api_key import get_project_from_api_key
+from app.utils.exceptions import not_found_error, forbidden_error
 from app.schemas.session import (
     SessionStartRequest,
     SessionStartResponse,
@@ -116,36 +118,48 @@ async def start_session(
 
 @router.get("/sessions", response_model=List[SessionListItem])
 async def list_sessions(
-    project_id: str = Query(..., description="Project ID"),
+    project_slug: str = Query(..., description="Project slug"),
     db: Session = Depends(get_db),
     api_key: Optional[str] = Header(None, alias="X-API-Key"),
+    request: Request = None,
 ) -> List[SessionListItem]:
     """
     List all sessions for a project.
     
     Args:
-        project_id: The project ID
+        project_slug: The project slug
         db: Database session
         api_key: Optional API key for authentication
+        request: Request object for headers
         
     Returns:
         List of sessions
     """
     try:
-        # Get project (using API key if provided, otherwise use project_id directly)
+        # Get project (using API key if provided, otherwise use slug with user_id)
         if api_key:
             project = get_project_from_api_key(api_key, db)
-            if str(project.id) != project_id:
-                raise forbidden_error("Project ID mismatch")
+            if project.slug != project_slug:
+                raise forbidden_error("Project slug mismatch")
         else:
-            # For development, allow direct project_id access
+            # Require user_id for authorization
+            user_id = request.headers.get("X-User-ID")
+            if not user_id:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="User ID required for authorization",
+                )
             try:
-                from app.utils.db import get_by_id
-                project = get_by_id(db, Project, project_id, "Project not found")
+                project = db.query(Project).filter(
+                    Project.slug == project_slug,
+                    Project.user_id == uuid.UUID(user_id)
+                ).first()
+                if not project:
+                    raise not_found_error("Project")
             except ValueError:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid project ID format",
+                    detail="Invalid user ID format",
                 )
         
         sessions = db.query(SessionModel).filter(

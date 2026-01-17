@@ -6,7 +6,7 @@ from app.api import ingest, sessions, auth, projects, api_keys, videos
 from app.database import Base, engine
 
 # Create database tables (in production, use migrations)
-# Base.metadata.create_all(bind=engine)
+
 
 app = FastAPI(
     title="Incuera API",

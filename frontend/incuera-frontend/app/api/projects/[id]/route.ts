@@ -10,8 +10,25 @@ export async function GET(
   props: { params: Promise<{ id: string }> }
 ) {
   const params = await props.params;
+  const searchParams = request.nextUrl.searchParams;
+  const userId = searchParams.get('user_id');
+  
+  if (!userId) {
+    return NextResponse.json(
+      { error: 'user_id is required' },
+      { status: 400 }
+    );
+  }
+  
+  if (!params.id) {
+    return NextResponse.json(
+      { error: 'project slug is required' },
+      { status: 400 }
+    );
+  }
+  
   try {
-    const response = await fetch(`${BACKEND_URL}/api/projects/${params.id}`, {
+    const response = await fetch(`${BACKEND_URL}/api/projects/${params.id}?user_id=${userId}`, {
       headers: {
         'Content-Type': 'application/json',
       },
@@ -39,10 +56,27 @@ export async function PUT(
   props: { params: Promise<{ id: string }> }
 ) {
   const params = await props.params;
+  const searchParams = request.nextUrl.searchParams;
+  const userId = searchParams.get('user_id');
+  
+  if (!userId) {
+    return NextResponse.json(
+      { error: 'user_id is required' },
+      { status: 400 }
+    );
+  }
+  
+  if (!params.id) {
+    return NextResponse.json(
+      { error: 'project slug is required' },
+      { status: 400 }
+    );
+  }
+  
   try {
     const body = await request.json();
 
-    const response = await fetch(`${BACKEND_URL}/api/projects/${params.id}`, {
+    const response = await fetch(`${BACKEND_URL}/api/projects/${params.id}?user_id=${userId}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -72,8 +106,25 @@ export async function DELETE(
   props: { params: Promise<{ id: string }> }
 ) {
   const params = await props.params;
+  const searchParams = request.nextUrl.searchParams;
+  const userId = searchParams.get('user_id');
+  
+  if (!userId) {
+    return NextResponse.json(
+      { error: 'user_id is required' },
+      { status: 400 }
+    );
+  }
+  
+  if (!params.id) {
+    return NextResponse.json(
+      { error: 'project slug is required' },
+      { status: 400 }
+    );
+  }
+  
   try {
-    const response = await fetch(`${BACKEND_URL}/api/projects/${params.id}`, {
+    const response = await fetch(`${BACKEND_URL}/api/projects/${params.id}?user_id=${userId}`, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',

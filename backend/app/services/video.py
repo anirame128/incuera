@@ -30,7 +30,6 @@ class VideoResult:
 # HTML template for rrweb player
 # Using rrweb 1.x which has stable, well-tested browser builds
 
-# HTML template for rrweb player
 # We embed the assets directly to avoid network issues and parsing blocking in headless mode
 PLAYER_HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -359,4 +358,5 @@ class VideoGenerator:
             await process.communicate()
         except Exception as e:
             # Thumbnail generation failed, but continue without it
+            logger.warning(f"Thumbnail generation failed: {e}")
             pass

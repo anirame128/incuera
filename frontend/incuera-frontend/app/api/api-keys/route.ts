@@ -8,16 +8,24 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const projectId = searchParams.get('project_id');
+    const projectSlug = searchParams.get('project_slug');
+    const userId = searchParams.get('user_id');
     
-    if (!projectId) {
+    if (!projectSlug) {
       return NextResponse.json(
-        { error: 'project_id is required' },
+        { error: 'project_slug is required' },
+        { status: 400 }
+      );
+    }
+    
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'user_id is required' },
         { status: 400 }
       );
     }
 
-    const response = await fetch(`${BACKEND_URL}/api/api-keys?project_id=${projectId}`, {
+    const response = await fetch(`${BACKEND_URL}/api/api-keys?project_slug=${projectSlug}&user_id=${userId}`, {
       headers: {
         'Content-Type': 'application/json',
       },
