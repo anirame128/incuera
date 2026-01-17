@@ -10,4 +10,8 @@ class SessionStatus:
     FAILED = "failed"
 
 
+# Session configuration
+STALE_SESSION_MINUTES = 5  # Time before considering a session stale
+
+
 

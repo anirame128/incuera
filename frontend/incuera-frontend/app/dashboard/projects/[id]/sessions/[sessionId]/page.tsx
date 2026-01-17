@@ -262,11 +262,13 @@ export default function SessionReplayPage() {
                 </p>
               </div>
             </div>
-          ) : videoStatus?.status === "ready" && videoStatus.video_url ? (
+          ) : (videoStatus?.status === "ready" || videoStatus?.video_url) ? (
             <div className="space-y-4">
               <div className="flex justify-center bg-black rounded-lg overflow-hidden">
                 <video
+                  key={videoStatus.video_url}
                   controls
+                  playsInline
                   autoPlay={false}
                   className="max-w-full"
                   poster={videoStatus.video_thumbnail_url}
@@ -329,6 +331,22 @@ export default function SessionReplayPage() {
                 <RefreshCw className={`h-4 w-4 mr-2 ${regenerating ? "animate-spin" : ""}`} />
                 Try Again
               </Button>
+            </div>
+          ) : (videoStatus?.status === "completed" || videoStatus?.status === "ending") ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-4">
+              <div className="relative">
+                <div className="h-16 w-16 animate-spin rounded-full border-4 border-gray-200 border-t-indigo-600" />
+              </div>
+              <div className="text-center">
+                <p className="font-medium text-gray-900">
+                  {videoStatus?.status === "ending" ? "Finalizing Session" : "Video Queued"}
+                </p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {videoStatus?.status === "ending"
+                    ? "Waiting for grace period to end..."
+                    : "Video generation is queued and will start soon..."}
+                </p>
+              </div>
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-16 gap-4">

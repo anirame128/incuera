@@ -29,25 +29,13 @@ class SessionStartResponse(BaseModel):
     session_id: str
 
 
-class SessionHeartbeatRequest(BaseModel):
-    """Request schema for /api/sessions/heartbeat endpoint."""
-    sessionId: str = Field(..., description="Session ID from SDK")
-    timestamp: int = Field(..., description="Client timestamp in milliseconds")
-    eventCount: int = Field(..., description="Current event count")
-
-
-class SessionHeartbeatResponse(BaseModel):
-    """Response schema for /api/sessions/heartbeat endpoint."""
-    success: bool
-    message: str
-
-
 class SessionEndRequest(BaseModel):
     """Request schema for /api/sessions/end endpoint."""
     sessionId: str = Field(..., description="Session ID from SDK")
-    reason: str = Field(..., description="Reason for session end (beforeunload, pagehide, manual_stop)")
+    reason: str = Field(..., description="Reason for session end (tab_close, manual_stop)")
     timestamp: int = Field(..., description="Client timestamp in milliseconds")
     finalEventCount: int = Field(..., description="Final event count")
+    apiKey: Optional[str] = Field(None, description="API key (for sendBeacon which can't send headers)")
 
 
 class SessionEndResponse(BaseModel):

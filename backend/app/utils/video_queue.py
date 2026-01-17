@@ -1,5 +1,6 @@
 """Video generation queue utilities."""
 import logging
+from datetime import timedelta
 from typing import Optional
 from arq import create_pool
 from app.workers.config import redis_settings
@@ -24,3 +25,5 @@ async def queue_video_generation(session_id: str) -> bool:
     except Exception as e:
         logger.error(f"Failed to queue video generation for session {session_id}: {e}", exc_info=True)
         return False
+
+

@@ -37,7 +37,7 @@ class Session(Base):
     video_generated_at = Column(DateTime(timezone=True), nullable=True)
     video_duration_ms = Column(Integer, nullable=True)
     video_size_bytes = Column(BigInteger, nullable=True)
-    last_heartbeat_at = Column(DateTime(timezone=True), nullable=True)
+    last_event_at = Column(DateTime(timezone=True), nullable=True)  # Server-side timestamp of last event received
 
     # Relationships
     project = relationship("Project", back_populates="sessions")

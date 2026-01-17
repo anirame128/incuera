@@ -12170,11 +12170,40 @@ var { takeFullSnapshot } = record;
 
 // src/index.ts
 var Incuera = class {
+  // Prevent recursive restarts
   constructor(config) {
     this.events = [];
     this.isRecording = false;
+    this.totalEventCount = 0;
+    this.isRestarting = false;
+    /**
+     * Handle page unload - flush events and signal session end
+     */
+    this.handlePageUnload = () => {
+      this.flush(true);
+      this.signalSessionEnd("beforeunload");
+    };
+    /**
+     * Handle page hide (mobile browsers)
+     */
+    this.handlePageHide = (event) => {
+      if (event.persisted) {
+        return;
+      }
+      this.flush(true);
+      this.signalSessionEnd("pagehide");
+    };
+    /**
+     * Handle visibility change (tab switch, minimize)
+     */
+    this.handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        this.flush(true);
+      }
+    };
     this.config = config;
     this.sessionId = this.getOrCreateSessionId();
+    this.maxEvents = config.maxEventsPerSession ?? 1e4;
   }
   /**
    * Start recording the session
@@ -12184,9 +12213,15 @@ var Incuera = class {
       return;
     }
     this.isRecording = true;
+    this.totalEventCount = 0;
     this.stopRecording = record({
       emit: (event) => {
+        if (this.totalEventCount >= this.maxEvents) {
+          console.warn(`[Incuera] Max events (${this.maxEvents}) reached for session`);
+          return;
+        }
         this.events.push(event);
+        this.totalEventCount++;
         if (this.events.length >= 100) {
           this.flush();
         }
@@ -12206,8 +12241,11 @@ var Incuera = class {
     });
     this.sendSessionMetadata();
     this.uploadInterval = setInterval(() => this.flush(), 1e4);
+    this.heartbeatInterval = setInterval(() => this.sendHeartbeat(), 6e4);
     if (typeof window !== "undefined") {
-      window.addEventListener("beforeunload", () => this.flush(true));
+      window.addEventListener("beforeunload", this.handlePageUnload);
+      window.addEventListener("pagehide", this.handlePageHide);
+      document.addEventListener("visibilitychange", this.handleVisibilityChange);
     }
   }
   /**
@@ -12243,6 +12281,11 @@ var Incuera = class {
       });
       if (!response.ok) {
         throw new Error(`Upload failed: ${response.statusText}`);
+      }
+      const data = await response.json();
+      if (data.session_finalized) {
+        console.log("[Incuera] Session finalized, creating new session");
+        await this.handleSessionFinalized(events);
       }
     } catch (error) {
       this.events.unshift(...events);
@@ -12286,6 +12329,102 @@ var Incuera = class {
     }
   }
   /**
+   * Send heartbeat to keep session active
+   */
+  async sendHeartbeat() {
+    if (!this.isRecording) return;
+    try {
+      const headers = {
+        "Content-Type": "application/json"
+      };
+      if (this.config.apiKey) {
+        headers["X-API-Key"] = this.config.apiKey;
+      }
+      const response = await fetch(`${this.config.apiHost}/api/sessions/heartbeat`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          sessionId: this.sessionId,
+          timestamp: Date.now(),
+          eventCount: this.totalEventCount
+        })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.session_finalized) {
+          console.log("[Incuera] Session finalized (detected via heartbeat), creating new session");
+          await this.handleSessionFinalized();
+        }
+      }
+    } catch (error) {
+    }
+  }
+  /**
+   * Handle session finalized - create a new session seamlessly
+   * This is called when the backend indicates the previous session is finalized
+   * (video generation started or complete)
+   */
+  async handleSessionFinalized(rejectedEvents) {
+    if (this.isRestarting) return;
+    this.isRestarting = true;
+    try {
+      if (typeof window !== "undefined") {
+        const STORAGE_KEY = "incuera_session_id";
+        const STORAGE_TIMESTAMP_KEY = "incuera_session_timestamp";
+        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(STORAGE_TIMESTAMP_KEY);
+      }
+      const newSessionId = this.generateSessionId();
+      this.sessionId = newSessionId;
+      if (typeof window !== "undefined") {
+        const STORAGE_KEY = "incuera_session_id";
+        const STORAGE_TIMESTAMP_KEY = "incuera_session_timestamp";
+        localStorage.setItem(STORAGE_KEY, newSessionId);
+        localStorage.setItem(STORAGE_TIMESTAMP_KEY, Date.now().toString());
+      }
+      this.totalEventCount = 0;
+      await this.sendSessionMetadata();
+      console.log(`[Incuera] Started new session: ${newSessionId}`);
+      if (rejectedEvents && rejectedEvents.length > 0) {
+        this.totalEventCount = rejectedEvents.length;
+        await this.uploadEvents(rejectedEvents, false);
+      }
+    } finally {
+      this.isRestarting = false;
+    }
+  }
+  /**
+   * Signal session end to trigger video generation
+   */
+  signalSessionEnd(reason) {
+    if (!this.isRecording) return;
+    const payload = JSON.stringify({
+      sessionId: this.sessionId,
+      reason,
+      timestamp: Date.now(),
+      finalEventCount: this.totalEventCount,
+      apiKey: this.config.apiKey
+    });
+    const headers = {
+      "Content-Type": "application/json"
+    };
+    if (this.config.apiKey) {
+      headers["X-API-Key"] = this.config.apiKey;
+    }
+    if (typeof navigator !== "undefined" && navigator.sendBeacon) {
+      const blob2 = new Blob([payload], { type: "application/json" });
+      navigator.sendBeacon(`${this.config.apiHost}/api/sessions/end`, blob2);
+    } else {
+      fetch(`${this.config.apiHost}/api/sessions/end`, {
+        method: "POST",
+        headers,
+        body: payload,
+        keepalive: true
+      }).catch(() => {
+      });
+    }
+  }
+  /**
    * Stop recording and cleanup
    */
   stop() {
@@ -12296,7 +12435,16 @@ var Incuera = class {
     if (this.uploadInterval) {
       clearInterval(this.uploadInterval);
     }
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+    }
+    if (typeof window !== "undefined") {
+      window.removeEventListener("beforeunload", this.handlePageUnload);
+      window.removeEventListener("pagehide", this.handlePageHide);
+      document.removeEventListener("visibilitychange", this.handleVisibilityChange);
+    }
     this.flush(true);
+    this.signalSessionEnd("manual_stop");
     this.isRecording = false;
   }
   /**
@@ -12304,6 +12452,12 @@ var Incuera = class {
    */
   getSessionId() {
     return this.sessionId;
+  }
+  /**
+   * Get current event count
+   */
+  getEventCount() {
+    return this.totalEventCount;
   }
   /**
    * Get or create session ID (persisted in localStorage)

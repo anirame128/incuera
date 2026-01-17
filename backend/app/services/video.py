@@ -202,7 +202,9 @@ class VideoGenerator:
         Returns:
             VideoResult with paths to generated files
         """
+        logger.error(f"[VIDEO_SERVICE] Starting video generation for session {session_id} with {len(events)} events")
         if not events:
+            logger.error(f"[VIDEO_SERVICE] No events provided for session {session_id}")
             return VideoResult(success=False, error="No events provided")
 
         temp_dir = None
@@ -220,8 +222,11 @@ class VideoGenerator:
             duration_ms = end_time - start_time
             duration_sec = duration_ms / 1000
 
+            logger.error(f"[VIDEO_SERVICE] Event duration: {duration_sec}s (start: {start_time}, end: {end_time})")
+
             # Add buffer time for loading and ending
             total_duration = min(duration_sec + 3, self.max_duration_seconds)
+            logger.error(f"[VIDEO_SERVICE] Total video duration (with buffer): {total_duration}s")
 
             # Use Playwright to record the video
             from playwright.async_api import async_playwright
@@ -296,28 +301,41 @@ class VideoGenerator:
 
             # Find the recorded video
             video_files = os.listdir(temp_video_dir)
+            logger.error(f"[VIDEO_SERVICE] Found {len(video_files)} files in temp video directory: {video_files}")
             if not video_files:
+                logger.error(f"[VIDEO_SERVICE] No video file generated in {temp_video_dir}")
                 return VideoResult(success=False, error="No video file generated")
 
             # Get the latest video file
+            webm_files = [f for f in video_files if f.endswith(".webm")]
+            logger.error(f"[VIDEO_SERVICE] Found {len(webm_files)} .webm files: {webm_files}")
+            if not webm_files:
+                logger.error(f"[VIDEO_SERVICE] No .webm files found in {temp_video_dir}")
+                return VideoResult(success=False, error="No .webm video file found")
+
             latest_video = max(
-                [os.path.join(temp_video_dir, f) for f in video_files if f.endswith(".webm")],
+                [os.path.join(temp_video_dir, f) for f in webm_files],
                 key=os.path.getctime
             )
+            logger.error(f"[VIDEO_SERVICE] Using video file: {latest_video}")
 
             # Move to output directory
             output_video_path = os.path.join(output_dir, "replay.webm")
             shutil.move(latest_video, output_video_path)
+            logger.error(f"[VIDEO_SERVICE] Moved video to output: {output_video_path}")
 
             # Generate thumbnail from first frame
             thumbnail_path = os.path.join(output_dir, "thumbnail.jpg")
+            logger.error(f"[VIDEO_SERVICE] Generating thumbnail: {thumbnail_path}")
             await self._generate_thumbnail(output_video_path, thumbnail_path)
 
             # Get file size
             video_size = os.path.getsize(output_video_path)
+            logger.error(f"[VIDEO_SERVICE] Video file size: {video_size} bytes")
 
             # Store the actual rendered video duration (includes buffer time)
             actual_duration_ms = int(total_duration * 1000)
+            logger.error(f"[VIDEO_SERVICE] Video generation complete. Path: {output_video_path}, Duration: {actual_duration_ms}ms, Size: {video_size} bytes")
 
             return VideoResult(
                 success=True,
@@ -328,7 +346,7 @@ class VideoGenerator:
             )
 
         except Exception as e:
-            logger.error(f"Video generation failed: {e}", exc_info=True)
+            logger.error(f"[VIDEO_SERVICE] Video generation failed for session {session_id}: {e}", exc_info=True)
             return VideoResult(success=False, error=str(e))
         finally:
             # Cleanup temporary directory

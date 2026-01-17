@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     allowed_origins: str = "http://localhost:3000,http://localhost:3001"
 
     # Redis (for ARQ worker)
-    redis_url: str = "redis://localhost:6379"
+    redis_url: str = "redis://127.0.0.1:6379"
 
     # Supabase Storage
     supabase_url: Optional[str] = None

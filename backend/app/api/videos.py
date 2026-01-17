@@ -42,6 +42,7 @@ async def get_video_status(
             if session.project_id != project.id:
                 raise forbidden_error("Access denied")
 
+        logger.error(f"[VIDEO_API] Getting video status for session {session_id}. Status: {session.status}, video_url: {session.video_url}, video_thumbnail_url: {session.video_thumbnail_url}")
         return VideoStatusResponse(
             session_id=session.session_id,
             status=session.status or SessionStatus.ACTIVE,

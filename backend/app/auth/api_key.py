@@ -74,32 +74,67 @@ def get_project_from_api_key(
     """
     Get project from API key. API key is required.
     This is a helper function that can be used as a dependency.
-    
+
     Args:
         api_key: API key from header
         db: Database session
-        
+
     Returns:
         Project instance
-        
+
     Raises:
         HTTPException: If API key is missing or invalid
     """
     if not api_key:
         raise authentication_error("API key is required")
-    
+
     # Find project via API key
     key_hash = hash_api_key(api_key)
     db_api_key = db.query(APIKey).filter(
         APIKey.key_hash == key_hash,
         APIKey.is_active == True,
     ).first()
-    
+
     if not db_api_key:
         raise authentication_error("Invalid API key")
-    
+
     project = db.query(Project).filter(Project.id == db_api_key.project_id).first()
     if not project:
         raise not_found_error("Project")
-    
+
+    return project
+
+
+def get_project_from_api_key_value(api_key: str, db: Session) -> Project:
+    """
+    Get project from API key value (not a dependency).
+    Used when API key comes from request body instead of header.
+
+    Args:
+        api_key: API key string
+        db: Database session
+
+    Returns:
+        Project instance
+
+    Raises:
+        HTTPException: If API key is missing or invalid
+    """
+    if not api_key:
+        raise authentication_error("API key is required")
+
+    # Find project via API key
+    key_hash = hash_api_key(api_key)
+    db_api_key = db.query(APIKey).filter(
+        APIKey.key_hash == key_hash,
+        APIKey.is_active == True,
+    ).first()
+
+    if not db_api_key:
+        raise authentication_error("Invalid API key")
+
+    project = db.query(Project).filter(Project.id == db_api_key.project_id).first()
+    if not project:
+        raise not_found_error("Project")
+
     return project

@@ -133,8 +133,18 @@ class StorageService:
             if content_type is None:
                 content_type = self._get_content_type(file_path)
 
-            # URL encode the storage path
-            encoded_path = quote(storage_path, safe='')
+            # Correctly format the URL for file upload
+            # Note: storage_path might contain slashes which are part of the path structure
+            # We should NOT quote slash characters as they define the directory structure
+            # But we should quote other special characters
+            
+            # For the object path, we need to handle each segment
+            # e.g. videos/project_id/session_id/replay.mp4
+            # We only quote the segments, not the slashes
+            path_segments = storage_path.split('/')
+            encoded_segments = [quote(segment, safe='') for segment in path_segments]
+            encoded_path = '/'.join(encoded_segments)
+            
             upload_url = f"{self.storage_url}/object/{self.BUCKET_NAME}/{encoded_path}"
 
             # Read file content
@@ -152,34 +162,46 @@ class StorageService:
             }
 
             async with httpx.AsyncClient(timeout=60.0) as client:
+                logger.error(f"[STORAGE] Uploading to URL: {upload_url}, file size: {len(file_content)} bytes")
                 response = await client.post(
                     upload_url,
                     headers=headers,
                     content=file_content,
                 )
 
+                logger.error(f"[STORAGE] Upload response status: {response.status_code}")
                 if response.status_code not in [200, 201]:
                     error_text = response.text
                     logger.error(
-                        f"Storage upload failed: {response.status_code} - {error_text}"
+                        f"[STORAGE] Storage upload failed: {response.status_code} - {error_text}"
                     )
                     return UploadResult(
                         success=False,
                         error=f"Upload failed: {response.status_code} - {error_text}"
                     )
+                logger.error(f"[STORAGE] Upload successful, response: {response.text[:200]}")
 
             # Generate URL based on bucket type
             if self._bucket_public:
                 # Public bucket - use public URL
+                # Similar encoding logic: preserve slashes, encode segments
+                path_segments = storage_path.split('/')
+                encoded_segments = [quote(segment, safe='') for segment in path_segments]
+                encoded_path = '/'.join(encoded_segments)
+                
                 file_url = f"{self.storage_url}/object/public/{self.BUCKET_NAME}/{encoded_path}"
+                logger.error(f"[STORAGE] Generated public URL: {file_url}")
             else:
                 # Private bucket - generate signed URL (valid for 1 year)
+                logger.error(f"[STORAGE] Bucket is private, generating signed URL")
                 file_url = await self._create_signed_url(storage_path, expires_in=31536000)  # 1 year
                 if not file_url:
+                    logger.error(f"[STORAGE] Failed to generate signed URL")
                     return UploadResult(
                         success=False,
                         error="Failed to generate signed URL for private bucket"
                     )
+                logger.error(f"[STORAGE] Generated signed URL: {file_url}")
 
             return UploadResult(success=True, url=file_url)
 
@@ -194,11 +216,18 @@ class StorageService:
         session_id: str,
     ) -> UploadResult:
         """Upload a video file."""
+        logger.error(f"[STORAGE] Uploading video: {video_path} for project {project_id}, session {session_id}")
         # Determine extension from the source file
         ext = os.path.splitext(video_path)[1].lower() or ".webm"
         content_type = "video/webm" if ext == ".webm" else "video/mp4"
         storage_path = f"videos/{project_id}/{session_id}/replay{ext}"
-        return await self.upload_file(video_path, storage_path, content_type)
+        logger.error(f"[STORAGE] Storage path: {storage_path}, content_type: {content_type}")
+        result = await self.upload_file(video_path, storage_path, content_type)
+        if result.success:
+            logger.error(f"[STORAGE] Video upload successful: {result.url}")
+        else:
+            logger.error(f"[STORAGE] Video upload failed: {result.error}")
+        return result
 
     async def upload_thumbnail(
         self,

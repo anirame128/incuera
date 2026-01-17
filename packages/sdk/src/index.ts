@@ -14,14 +14,16 @@ class Incuera {
     private events: eventWithTime[] = []
     private stopRecording?: () => void
     private uploadInterval?: ReturnType<typeof setInterval>
-    private heartbeatInterval?: ReturnType<typeof setInterval>
     private isRecording: boolean = false
     private totalEventCount: number = 0
     private maxEvents: number
+    private sessionStartTime: number = 0
+    private sessionEndSent: boolean = false  // Prevent duplicate session end signals
+    private readonly MIN_SESSION_DURATION_MS = 30000 // 30 seconds
 
     constructor(config: IncueraConfig) {
         this.config = config
-        this.sessionId = this.getOrCreateSessionId()
+        this.sessionId = this.generateSessionId()
         this.maxEvents = config.maxEventsPerSession ?? 10000
     }
 
@@ -35,6 +37,8 @@ class Incuera {
 
         this.isRecording = true
         this.totalEventCount = 0
+        this.sessionStartTime = Date.now()
+        this.sessionEndSent = false
 
         // Start rrweb recording
         this.stopRecording = record({
@@ -70,43 +74,24 @@ class Incuera {
         // Auto-flush every 10 seconds
         this.uploadInterval = setInterval(() => this.flush(), 10000)
 
-        // Send heartbeat every 60 seconds
-        this.heartbeatInterval = setInterval(() => this.sendHeartbeat(), 60000)
-
-        // Flush on page unload and signal session end
+        // Only handle tab close (beforeunload) - not navigation or visibility changes
         if (typeof window !== 'undefined') {
-            window.addEventListener('beforeunload', this.handlePageUnload)
-            window.addEventListener('pagehide', this.handlePageHide)
-            document.addEventListener('visibilitychange', this.handleVisibilityChange)
+            window.addEventListener('beforeunload', this.handleTabClose)
         }
     }
 
     /**
-     * Handle page unload - flush events and signal session end
+     * Handle tab close - only end session if >= 30 seconds
      */
-    private handlePageUnload = () => {
-        this.flush(true)
-        this.signalSessionEnd('beforeunload')
-    }
-
-    /**
-     * Handle page hide (mobile browsers)
-     */
-    private handlePageHide = (event: PageTransitionEvent) => {
-        if (event.persisted) {
-            // Page is being cached (bfcache), don't end session
-            return
-        }
-        this.flush(true)
-        this.signalSessionEnd('pagehide')
-    }
-
-    /**
-     * Handle visibility change (tab switch, minimize)
-     */
-    private handleVisibilityChange = () => {
-        if (document.visibilityState === 'hidden') {
-            // Flush events when tab becomes hidden
+    private handleTabClose = () => {
+        const sessionDuration = Date.now() - this.sessionStartTime
+        
+        // Only end session if it's >= 30 seconds
+        if (sessionDuration >= this.MIN_SESSION_DURATION_MS) {
+            this.flush(true)
+            this.signalSessionEnd('tab_close')
+        } else {
+            // Session too short, just flush events but don't signal end
             this.flush(true)
         }
     }
@@ -199,55 +184,33 @@ class Incuera {
         }
     }
 
-    /**
-     * Send heartbeat to keep session active
-     */
-    private async sendHeartbeat() {
-        if (!this.isRecording) return
-
-        try {
-            const headers: Record<string, string> = {
-                'Content-Type': 'application/json',
-            }
-
-            if (this.config.apiKey) {
-                headers['X-API-Key'] = this.config.apiKey
-            }
-
-            await fetch(`${this.config.apiHost}/api/sessions/heartbeat`, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify({
-                    sessionId: this.sessionId,
-                    timestamp: Date.now(),
-                    eventCount: this.totalEventCount,
-                }),
-            })
-        } catch (error) {
-            // Silently fail heartbeat
-        }
-    }
 
     /**
      * Signal session end to trigger video generation
+     * Only called when tab closes and session is >= 30 seconds
      */
     private signalSessionEnd(reason: string) {
         if (!this.isRecording) return
+        
+        // Prevent duplicate calls (multiple beforeunload events can fire)
+        if (this.sessionEndSent) return
+        this.sessionEndSent = true
 
+        const sessionDuration = Date.now() - this.sessionStartTime
+        
+        // Double-check duration before sending (should already be checked, but safety check)
+        if (sessionDuration < this.MIN_SESSION_DURATION_MS) {
+            return
+        }
+
+        // Include apiKey in body for sendBeacon (can't send headers)
         const payload = JSON.stringify({
             sessionId: this.sessionId,
             reason,
             timestamp: Date.now(),
             finalEventCount: this.totalEventCount,
+            apiKey: this.config.apiKey,
         })
-
-        const headers: Record<string, string> = {
-            'Content-Type': 'application/json',
-        }
-
-        if (this.config.apiKey) {
-            headers['X-API-Key'] = this.config.apiKey
-        }
 
         // Use sendBeacon for reliable delivery on page close
         if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
@@ -255,6 +218,12 @@ class Incuera {
             navigator.sendBeacon(`${this.config.apiHost}/api/sessions/end`, blob)
         } else {
             // Fallback to keepalive fetch
+            const headers: Record<string, string> = {
+                'Content-Type': 'application/json',
+            }
+            if (this.config.apiKey) {
+                headers['X-API-Key'] = this.config.apiKey
+            }
             fetch(`${this.config.apiHost}/api/sessions/end`, {
                 method: 'POST',
                 headers,
@@ -280,19 +249,20 @@ class Incuera {
             clearInterval(this.uploadInterval)
         }
 
-        if (this.heartbeatInterval) {
-            clearInterval(this.heartbeatInterval)
-        }
-
         // Remove event listeners
         if (typeof window !== 'undefined') {
-            window.removeEventListener('beforeunload', this.handlePageUnload)
-            window.removeEventListener('pagehide', this.handlePageHide)
-            document.removeEventListener('visibilitychange', this.handleVisibilityChange)
+            window.removeEventListener('beforeunload', this.handleTabClose)
         }
 
-        this.flush(true)
-        this.signalSessionEnd('manual_stop')
+        // Only signal end if session is >= 30 seconds
+        const sessionDuration = Date.now() - this.sessionStartTime
+        if (sessionDuration >= this.MIN_SESSION_DURATION_MS) {
+            this.flush(true)
+            this.signalSessionEnd('manual_stop')
+        } else {
+            this.flush(true)
+        }
+        
         this.isRecording = false
     }
 
@@ -310,41 +280,6 @@ class Incuera {
         return this.totalEventCount
     }
 
-    /**
-     * Get or create session ID (persisted in localStorage)
-     * Creates a new session when:
-     - No existing session ID in storage
-     - Session is older than 30 minutes (new page visit)
-     */
-    private getOrCreateSessionId(): string {
-        if (typeof window === 'undefined') {
-            return this.generateSessionId()
-        }
-
-        const STORAGE_KEY = 'incuera_session_id'
-        const STORAGE_TIMESTAMP_KEY = 'incuera_session_timestamp'
-        const SESSION_TIMEOUT_MS = 30 * 60 * 1000 // 30 minutes
-
-        const existingId = localStorage.getItem(STORAGE_KEY)
-        const existingTimestamp = localStorage.getItem(STORAGE_TIMESTAMP_KEY)
-
-        // Check if we have a valid existing session
-        if (existingId && existingTimestamp) {
-            const sessionAge = Date.now() - parseInt(existingTimestamp, 10)
-
-            // Reuse session if it's less than 30 minutes old
-            if (sessionAge < SESSION_TIMEOUT_MS) {
-                return existingId
-            }
-        }
-
-        // Create new session
-        const newSessionId = this.generateSessionId()
-        localStorage.setItem(STORAGE_KEY, newSessionId)
-        localStorage.setItem(STORAGE_TIMESTAMP_KEY, Date.now().toString())
-
-        return newSessionId
-    }
 
     /**
      * Generate unique session ID

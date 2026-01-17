@@ -15,3 +15,4 @@ class IngestResponse(BaseModel):
     success: bool
     message: str
     events_received: int
+    session_finalized: bool = False  # True if session is already finalized (SDK should create new session)
