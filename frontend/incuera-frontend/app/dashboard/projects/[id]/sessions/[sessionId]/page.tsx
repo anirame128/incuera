@@ -11,7 +11,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Download, RefreshCw, Loader2 } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ArrowLeft, Download, RefreshCw, Loader2, Brain, MousePointerClick, TrendingUp, AlertTriangle, BarChart3 } from "lucide-react";
 import { toast } from "sonner";
 
 interface SessionData {
@@ -36,6 +38,35 @@ interface VideoStatus {
   video_size_bytes?: number;
 }
 
+interface AnalysisData {
+  session_id: string;
+  analysis_status: string;
+  analysis_completed_at?: string;
+  session_summary?: string;
+  interaction_heatmap?: {
+    clicks?: Array<{ timestamp_ms: number; x: number; y: number; element?: string }>;
+    hovers?: Array<{ timestamp_ms: number; x: number; y: number; duration_ms?: number }>;
+    scrolls?: Array<{ timestamp_ms: number; depth_percent?: number }>;
+  };
+  conversion_funnel?: {
+    steps?: Array<{ step: string; timestamp_ms: number; duration_ms: number }>;
+    completed: boolean;
+    drop_off_step?: string | null;
+  };
+  error_events?: Array<{ timestamp_ms: number; type: string; description: string }>;
+  action_counts?: {
+    clicks?: number;
+    scrolls?: number;
+    form_interactions?: number;
+    page_navigations?: number;
+    button_presses?: number;
+  };
+  molmo_analysis_metadata?: {
+    model_id?: string;
+    processing_time?: number;
+  };
+}
+
 export default function SessionReplayPage() {
   const router = useRouter();
   const params = useParams();
@@ -45,9 +76,12 @@ export default function SessionReplayPage() {
 
   const [session, setSession] = useState<SessionData | null>(null);
   const [videoStatus, setVideoStatus] = useState<VideoStatus | null>(null);
+  const [analysis, setAnalysis] = useState<AnalysisData | null>(null);
   const [loading, setLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
   const lastFetchedRef = useRef<string | null>(null);
+  const analysisPollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -69,6 +103,10 @@ export default function SessionReplayPage() {
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
         pollIntervalRef.current = null;
+      }
+      if (analysisPollIntervalRef.current) {
+        clearInterval(analysisPollIntervalRef.current);
+        analysisPollIntervalRef.current = null;
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -92,6 +130,14 @@ export default function SessionReplayPage() {
 
     // Fetch video status
     await fetchVideoStatus();
+    
+    // Fetch analysis data if video is ready
+    if (videoStatus?.status === "ready" || videoStatus?.video_url) {
+      await fetchAnalysis();
+      // Auto-trigger analysis if it hasn't started yet
+      await triggerAnalysisIfNeeded();
+    }
+    
     setLoading(false);
   };
 
@@ -113,9 +159,84 @@ export default function SessionReplayPage() {
           clearInterval(pollIntervalRef.current);
           pollIntervalRef.current = null;
         }
+        
+        // If video is ready, fetch analysis and auto-trigger if needed
+        if (data.status === "ready" || data.video_url) {
+          await fetchAnalysis();
+          // Auto-trigger analysis if it hasn't started yet
+          await triggerAnalysisIfNeeded();
+        }
       }
     } catch (error) {
       console.error("Failed to fetch video status:", error);
+    }
+  };
+
+  const fetchAnalysis = async () => {
+    if (analysisLoading) return;
+    
+    setAnalysisLoading(true);
+    try {
+      const analysisResponse = await fetch(
+        `/api/sessions/${encodeURIComponent(sessionId)}/analysis`
+      );
+      if (analysisResponse.ok) {
+        const data = await analysisResponse.json();
+        setAnalysis(data);
+        
+        // If analysis is processing, start polling
+        if (data.analysis_status === "processing" && !analysisPollIntervalRef.current) {
+          startAnalysisPolling();
+        }
+        // If completed or failed, stop polling
+        if ((data.analysis_status === "completed" || data.analysis_status === "failed") && analysisPollIntervalRef.current) {
+          clearInterval(analysisPollIntervalRef.current);
+          analysisPollIntervalRef.current = null;
+        }
+      }
+    } catch (error) {
+      console.error("Failed to fetch analysis:", error);
+    } finally {
+      setAnalysisLoading(false);
+    }
+  };
+
+  const startAnalysisPolling = () => {
+    analysisPollIntervalRef.current = setInterval(async () => {
+      await fetchAnalysis();
+    }, 10000); // Poll every 10 seconds for analysis
+  };
+
+  const triggerAnalysisIfNeeded = async () => {
+    // Automatically trigger analysis if video is ready but analysis hasn't started
+    if (
+      videoStatus?.status === "ready" &&
+      videoStatus?.video_url &&
+      (!analysis || analysis.analysis_status === "pending" || !analysis.analysis_status)
+    ) {
+      try {
+        const response = await fetch(
+          `/api/sessions/${encodeURIComponent(sessionId)}/analyze`,
+          { method: "POST" }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.analysis_job_queued) {
+            // Silently start analysis - no toast notification
+            setAnalysis((prev) => prev ? { ...prev, analysis_status: "processing" } : {
+              session_id: sessionId,
+              analysis_status: "processing",
+            });
+            startAnalysisPolling();
+            // Fetch analysis status immediately
+            await fetchAnalysis();
+          }
+        }
+      } catch (error) {
+        // Silently fail - analysis will be retried on next page load
+        console.error("Failed to auto-trigger analysis:", error);
+      }
     }
   };
 
@@ -247,10 +368,27 @@ export default function SessionReplayPage() {
         </CardContent>
       </Card>
 
-      {/* Video Player */}
-      <Card>
-        <CardContent className="pt-6">
-          {videoStatus?.status === "processing" ? (
+      {/* Video Player and Analysis */}
+      <Tabs defaultValue="video" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="video">Video Replay</TabsTrigger>
+          {videoStatus?.status === "ready" && (
+            <TabsTrigger value="analysis">
+              AI Analysis
+              {analysis?.analysis_status === "processing" && (
+                <Loader2 className="ml-2 h-3 w-3 animate-spin" />
+              )}
+              {analysis?.analysis_status === "completed" && (
+                <Badge variant="secondary" className="ml-2 h-4 px-1.5 text-xs">Ready</Badge>
+              )}
+            </TabsTrigger>
+          )}
+        </TabsList>
+
+        <TabsContent value="video">
+          <Card>
+            <CardContent className="pt-6">
+              {videoStatus?.status === "processing" ? (
             <div className="flex flex-col items-center justify-center py-16 gap-4">
               <div className="relative">
                 <div className="h-16 w-16 animate-spin rounded-full border-4 border-gray-200 border-t-indigo-600" />
@@ -381,6 +519,296 @@ export default function SessionReplayPage() {
           )}
         </CardContent>
       </Card>
+        </TabsContent>
+
+        {videoStatus?.status === "ready" && (
+          <TabsContent value="analysis">
+            <div className="space-y-6">
+              {/* Analysis Status */}
+              {analysisLoading && !analysis ? (
+                <Card>
+                  <CardContent className="py-12">
+                    <div className="flex flex-col items-center justify-center gap-4">
+                      <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+                      <p className="text-sm text-muted-foreground">Loading analysis...</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : analysis?.analysis_status === "processing" ? (
+                <Card>
+                  <CardContent className="py-12">
+                    <div className="flex flex-col items-center justify-center gap-4">
+                      <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+                      <div className="text-center">
+                        <p className="font-medium text-gray-900">Analyzing Video</p>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          AI is analyzing the session replay. This may take a few minutes...
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : analysis?.analysis_status === "completed" ? (
+                <>
+                  {/* Session Summary */}
+                  {analysis.session_summary && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <Brain className="h-5 w-5" />
+                          Session Summary
+                        </CardTitle>
+                        <CardDescription>
+                          AI-generated summary of the user's journey
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                          {analysis.session_summary}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Action Counts */}
+                  {analysis.action_counts && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <BarChart3 className="h-5 w-5" />
+                          Action Metrics
+                        </CardTitle>
+                        <CardDescription>
+                          Quantified user interactions
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                          {analysis.action_counts.clicks !== undefined && (
+                            <div className="text-center p-4 rounded-lg bg-muted">
+                              <p className="text-2xl font-bold">{analysis.action_counts.clicks}</p>
+                              <p className="text-xs text-muted-foreground mt-1">Clicks</p>
+                            </div>
+                          )}
+                          {analysis.action_counts.scrolls !== undefined && (
+                            <div className="text-center p-4 rounded-lg bg-muted">
+                              <p className="text-2xl font-bold">{analysis.action_counts.scrolls}</p>
+                              <p className="text-xs text-muted-foreground mt-1">Scrolls</p>
+                            </div>
+                          )}
+                          {analysis.action_counts.form_interactions !== undefined && (
+                            <div className="text-center p-4 rounded-lg bg-muted">
+                              <p className="text-2xl font-bold">{analysis.action_counts.form_interactions}</p>
+                              <p className="text-xs text-muted-foreground mt-1">Form Fields</p>
+                            </div>
+                          )}
+                          {analysis.action_counts.page_navigations !== undefined && (
+                            <div className="text-center p-4 rounded-lg bg-muted">
+                              <p className="text-2xl font-bold">{analysis.action_counts.page_navigations}</p>
+                              <p className="text-xs text-muted-foreground mt-1">Pages</p>
+                            </div>
+                          )}
+                          {analysis.action_counts.button_presses !== undefined && (
+                            <div className="text-center p-4 rounded-lg bg-muted">
+                              <p className="text-2xl font-bold">{analysis.action_counts.button_presses}</p>
+                              <p className="text-xs text-muted-foreground mt-1">Buttons</p>
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Conversion Funnel */}
+                  {analysis.conversion_funnel && analysis.conversion_funnel.steps && analysis.conversion_funnel.steps.length > 0 && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <TrendingUp className="h-5 w-5" />
+                          Conversion Funnel
+                        </CardTitle>
+                        <CardDescription>
+                          User journey through the website
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-3">
+                          {analysis.conversion_funnel.steps.map((step, index) => (
+                            <div key={index} className="flex items-center gap-4">
+                              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-sm font-semibold">
+                                {index + 1}
+                              </div>
+                              <div className="flex-1">
+                                <p className="font-medium capitalize">{step.step}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {formatDuration(step.duration_ms / 1000)} • {new Date(step.timestamp_ms).toLocaleTimeString()}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                          <Separator className="my-4" />
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium">
+                              Status: {analysis.conversion_funnel.completed ? (
+                                <Badge variant="default" className="ml-2">Completed</Badge>
+                              ) : (
+                                <Badge variant="secondary" className="ml-2">Abandoned</Badge>
+                              )}
+                            </span>
+                            {analysis.conversion_funnel.drop_off_step && (
+                              <span className="text-sm text-muted-foreground">
+                                Dropped off at: <span className="font-medium capitalize">{analysis.conversion_funnel.drop_off_step}</span>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Interaction Heatmap Info */}
+                  {analysis.interaction_heatmap && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <MousePointerClick className="h-5 w-5" />
+                          Interaction Heatmap
+                        </CardTitle>
+                        <CardDescription>
+                          User interaction locations and patterns
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          {analysis.interaction_heatmap.clicks && analysis.interaction_heatmap.clicks.length > 0 && (
+                            <div className="p-4 rounded-lg border">
+                              <p className="text-sm font-medium">Clicks</p>
+                              <p className="text-2xl font-bold mt-1">{analysis.interaction_heatmap.clicks.length}</p>
+                              <p className="text-xs text-muted-foreground mt-1">Total click events</p>
+                            </div>
+                          )}
+                          {analysis.interaction_heatmap.hovers && analysis.interaction_heatmap.hovers.length > 0 && (
+                            <div className="p-4 rounded-lg border">
+                              <p className="text-sm font-medium">Hovers</p>
+                              <p className="text-2xl font-bold mt-1">{analysis.interaction_heatmap.hovers.length}</p>
+                              <p className="text-xs text-muted-foreground mt-1">Hover events detected</p>
+                            </div>
+                          )}
+                          {analysis.interaction_heatmap.scrolls && analysis.interaction_heatmap.scrolls.length > 0 && (
+                            <div className="p-4 rounded-lg border">
+                              <p className="text-sm font-medium">Scrolls</p>
+                              <p className="text-2xl font-bold mt-1">{analysis.interaction_heatmap.scrolls.length}</p>
+                              <p className="text-xs text-muted-foreground mt-1">Scroll events</p>
+                            </div>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-4">
+                          Note: Full heatmap visualization with coordinate overlays can be implemented in a future update.
+                        </p>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Error Events */}
+                  {analysis.error_events && analysis.error_events.length > 0 && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <AlertTriangle className="h-5 w-5 text-amber-600" />
+                          Error Events
+                        </CardTitle>
+                        <CardDescription>
+                          Detected errors and anomalies
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-3">
+                          {analysis.error_events.map((error, index) => (
+                            <div key={index} className="p-3 rounded-lg border border-amber-200 bg-amber-50">
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <p className="text-sm font-medium capitalize">{error.type}</p>
+                                  <p className="text-xs text-muted-foreground mt-1">{error.description}</p>
+                                </div>
+                                <Badge variant="outline" className="ml-2">
+                                  {new Date(error.timestamp_ms).toLocaleTimeString()}
+                                </Badge>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Analysis Metadata */}
+                  {analysis.molmo_analysis_metadata && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-sm">Analysis Metadata</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-xs text-muted-foreground space-y-1">
+                          {analysis.molmo_analysis_metadata.model_id && (
+                            <p>Model: {analysis.molmo_analysis_metadata.model_id}</p>
+                          )}
+                          {analysis.analysis_completed_at && (
+                            <p>Completed: {new Date(analysis.analysis_completed_at).toLocaleString()}</p>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+                </>
+              ) : analysis?.analysis_status === "failed" ? (
+                <Card>
+                  <CardContent className="py-12">
+                    <div className="flex flex-col items-center justify-center gap-4">
+                      <AlertTriangle className="h-8 w-8 text-red-500" />
+                      <div className="text-center">
+                        <p className="font-medium text-gray-900">Analysis Failed</p>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          There was an error analyzing the video.
+                        </p>
+                        {analysis.molmo_analysis_metadata?.error && (
+                          <div className="mt-4 p-3 rounded-lg bg-red-50 border border-red-200 max-w-2xl">
+                            <p className="text-xs font-medium text-red-900 mb-1">Error Details:</p>
+                            <p className="text-xs text-red-700 break-words">
+                              {analysis.molmo_analysis_metadata.error}
+                            </p>
+                            {analysis.molmo_analysis_metadata.error_type && (
+                              <p className="text-xs text-red-600 mt-1">
+                                Type: {analysis.molmo_analysis_metadata.error_type}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                        <p className="text-xs text-muted-foreground mt-4">
+                          Analysis will be retried automatically when you refresh the page.
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card>
+                  <CardContent className="py-12">
+                    <div className="flex flex-col items-center justify-center gap-4">
+                      <Brain className="h-8 w-8 text-muted-foreground" />
+                      <div className="text-center">
+                        <p className="font-medium text-gray-900">Analysis Pending</p>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Analysis will start automatically. Please wait...
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </TabsContent>
+        )}
+      </Tabs>
     </div>
   );
 }

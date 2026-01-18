@@ -1,31 +1,11 @@
 """ARQ worker configuration."""
-from arq.connections import RedisSettings
 from arq.cron import cron
-from app.config import settings
-from app.utils.logger import logger
-from urllib.parse import urlparse
-
-# Import the actual task functions
-from app.workers.tasks import generate_session_video, cleanup_stale_sessions
-
-
-def parse_redis_url(url: str) -> RedisSettings:
-    """Parse Redis URL into RedisSettings."""
-    parsed = urlparse(url)
-    return RedisSettings(
-        host=parsed.hostname or "localhost",
-        port=parsed.port or 6379,
-        password=parsed.password,
-        database=int(parsed.path[1:]) if parsed.path and len(parsed.path) > 1 else 0,
-    )
-
-
-redis_settings = parse_redis_url(settings.redis_url)
+from app.workers.redis_config import redis_settings
 
 
 async def startup(ctx):
     """Worker startup hook."""
-    ctx["startup_complete"] = True
+    pass
 
 
 async def shutdown(ctx):
@@ -36,19 +16,9 @@ async def shutdown(ctx):
 class WorkerSettings:
     """ARQ worker settings."""
 
-    # Use actual function references, not strings
-    functions = [
-        generate_session_video,
-        cleanup_stale_sessions,
-    ]
-
-    cron_jobs = [
-        # Run cleanup every 5 minutes
-        cron(
-            cleanup_stale_sessions,
-            minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55},
-        ),
-    ]
+    # Functions will be set after module import to avoid circular dependencies
+    functions = []
+    cron_jobs = []
 
     on_startup = startup
     on_shutdown = shutdown
@@ -61,3 +31,30 @@ class WorkerSettings:
     keep_result = 3600  # Keep results for 1 hour
     retry_jobs = True
     max_tries = 3
+    
+    # Analysis job timeout (5 minutes for Molmo 2 analysis)
+    # Note: analyze_session_video has its own 5-minute timeout in the task
+
+
+# Lazy import of task functions after class definition to avoid circular imports
+def _init_worker_settings():
+    """Initialize worker settings with task functions."""
+    from app.workers.tasks import generate_session_video, cleanup_stale_sessions, analyze_session_video
+    
+    WorkerSettings.functions = [
+        generate_session_video,
+        cleanup_stale_sessions,
+        analyze_session_video,
+    ]
+    
+    WorkerSettings.cron_jobs = [
+        # Run cleanup every 5 minutes
+        cron(
+            cleanup_stale_sessions,
+            minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55},
+        ),
+    ]
+
+
+# Initialize settings when module is imported
+_init_worker_settings()

@@ -15,7 +15,6 @@ declare class Incuera {
     private isRecording;
     private totalEventCount;
     private maxEvents;
-    private isRestarting;
     constructor(config: IncueraConfig);
     /**
      * Start recording the session
@@ -50,13 +49,8 @@ declare class Incuera {
      */
     private sendHeartbeat;
     /**
-     * Handle session finalized - create a new session seamlessly
-     * This is called when the backend indicates the previous session is finalized
-     * (video generation started or complete)
-     */
-    private handleSessionFinalized;
-    /**
-     * Signal session end to trigger video generation
+     * Signal session end to trigger video generation.
+     * API key is included in the body because sendBeacon cannot set custom headers.
      */
     private signalSessionEnd;
     /**

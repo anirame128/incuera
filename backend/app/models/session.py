@@ -1,6 +1,6 @@
 """Session model."""
-from sqlalchemy import Column, String, Integer, BigInteger, DateTime, ForeignKey, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, String, Integer, BigInteger, DateTime, ForeignKey, func, Text
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 import uuid
 from app.database import Base
@@ -38,6 +38,16 @@ class Session(Base):
     video_duration_ms = Column(Integer, nullable=True)
     video_size_bytes = Column(BigInteger, nullable=True)
     last_event_at = Column(DateTime(timezone=True), nullable=True)  # Server-side timestamp of last event received
+
+    # Molmo 2 analysis fields
+    analysis_status = Column(String(20), default="pending", index=True)  # pending|processing|completed|failed
+    analysis_completed_at = Column(DateTime(timezone=True), nullable=True)
+    interaction_heatmap = Column(JSONB, nullable=True)  # Click/hover coordinates with timestamps
+    conversion_funnel = Column(JSONB, nullable=True)  # Page transitions and funnel steps
+    error_events = Column(JSONB, nullable=True)  # Detected errors and anomalies
+    session_summary = Column(Text, nullable=True)  # Dense caption/summary
+    action_counts = Column(JSONB, nullable=True)  # Counts of clicks, scrolls, form submissions
+    molmo_analysis_metadata = Column(JSONB, nullable=True)  # Model version, processing time, confidence scores
 
     # Relationships
     project = relationship("Project", back_populates="sessions")

@@ -12170,12 +12170,10 @@ var { takeFullSnapshot } = record;
 
 // src/index.ts
 var Incuera = class {
-  // Prevent recursive restarts
   constructor(config) {
     this.events = [];
     this.isRecording = false;
     this.totalEventCount = 0;
-    this.isRestarting = false;
     /**
      * Handle page unload - flush events and signal session end
      */
@@ -12282,11 +12280,6 @@ var Incuera = class {
       if (!response.ok) {
         throw new Error(`Upload failed: ${response.statusText}`);
       }
-      const data = await response.json();
-      if (data.session_finalized) {
-        console.log("[Incuera] Session finalized, creating new session");
-        await this.handleSessionFinalized(events);
-      }
     } catch (error) {
       this.events.unshift(...events);
     }
@@ -12340,7 +12333,7 @@ var Incuera = class {
       if (this.config.apiKey) {
         headers["X-API-Key"] = this.config.apiKey;
       }
-      const response = await fetch(`${this.config.apiHost}/api/sessions/heartbeat`, {
+      await fetch(`${this.config.apiHost}/api/sessions/heartbeat`, {
         method: "POST",
         headers,
         body: JSON.stringify({
@@ -12349,62 +12342,25 @@ var Incuera = class {
           eventCount: this.totalEventCount
         })
       });
-      if (response.ok) {
-        const data = await response.json();
-        if (data.session_finalized) {
-          console.log("[Incuera] Session finalized (detected via heartbeat), creating new session");
-          await this.handleSessionFinalized();
-        }
-      }
     } catch (error) {
     }
   }
   /**
-   * Handle session finalized - create a new session seamlessly
-   * This is called when the backend indicates the previous session is finalized
-   * (video generation started or complete)
-   */
-  async handleSessionFinalized(rejectedEvents) {
-    if (this.isRestarting) return;
-    this.isRestarting = true;
-    try {
-      if (typeof window !== "undefined") {
-        const STORAGE_KEY = "incuera_session_id";
-        const STORAGE_TIMESTAMP_KEY = "incuera_session_timestamp";
-        localStorage.removeItem(STORAGE_KEY);
-        localStorage.removeItem(STORAGE_TIMESTAMP_KEY);
-      }
-      const newSessionId = this.generateSessionId();
-      this.sessionId = newSessionId;
-      if (typeof window !== "undefined") {
-        const STORAGE_KEY = "incuera_session_id";
-        const STORAGE_TIMESTAMP_KEY = "incuera_session_timestamp";
-        localStorage.setItem(STORAGE_KEY, newSessionId);
-        localStorage.setItem(STORAGE_TIMESTAMP_KEY, Date.now().toString());
-      }
-      this.totalEventCount = 0;
-      await this.sendSessionMetadata();
-      console.log(`[Incuera] Started new session: ${newSessionId}`);
-      if (rejectedEvents && rejectedEvents.length > 0) {
-        this.totalEventCount = rejectedEvents.length;
-        await this.uploadEvents(rejectedEvents, false);
-      }
-    } finally {
-      this.isRestarting = false;
-    }
-  }
-  /**
-   * Signal session end to trigger video generation
+   * Signal session end to trigger video generation.
+   * API key is included in the body because sendBeacon cannot set custom headers.
    */
   signalSessionEnd(reason) {
     if (!this.isRecording) return;
-    const payload = JSON.stringify({
+    const body = {
       sessionId: this.sessionId,
       reason,
       timestamp: Date.now(),
-      finalEventCount: this.totalEventCount,
-      apiKey: this.config.apiKey
-    });
+      finalEventCount: this.totalEventCount
+    };
+    if (this.config.apiKey) {
+      body.apiKey = this.config.apiKey;
+    }
+    const payload = JSON.stringify(body);
     const headers = {
       "Content-Type": "application/json"
     };

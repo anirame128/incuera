@@ -87,14 +87,6 @@ class ApiClient {
     return response.json();
   }
 
-  // Authentication
-  async login(email: string, password: string): Promise<{ user: User; token?: string }> {
-    return this.request('/api/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
-    });
-  }
-
   // Projects
   async getProjects(userId: string): Promise<Project[]> {
     return this.request(`/api/projects?user_id=${userId}`);

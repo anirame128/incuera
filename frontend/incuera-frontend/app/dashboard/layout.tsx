@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, createContext, useContext, useEffect } from 'react';
-import React from 'react';
+import { useState, createContext, useContext, useEffect, Fragment, type ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
 import { AppSidebar } from '@/components/app-sidebar';
 import {
@@ -39,7 +38,7 @@ export const useNewProjectDialog = () => useContext(NewProjectDialogContext);
 export default function DashboardLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   const pathname = usePathname();
   const [newProjectDialogOpen, setNewProjectDialogOpen] = useState(false);
@@ -117,7 +116,7 @@ export default function DashboardLayout({
               <Breadcrumb>
                 <BreadcrumbList className="gap-2">
                   {breadcrumbs.map((crumb, index) => (
-                    <React.Fragment key={`${crumb.href}-${index}`}>
+                    <Fragment key={`${crumb.href}-${index}`}>
                       {index > 0 && <BreadcrumbSeparator className="hidden md:block" />}
                       <BreadcrumbItem className={index === breadcrumbs.length - 1 ? '' : 'hidden md:block'}>
                         {index === breadcrumbs.length - 1 ? (
@@ -128,7 +127,7 @@ export default function DashboardLayout({
                           </BreadcrumbLink>
                         )}
                       </BreadcrumbItem>
-                    </React.Fragment>
+                    </Fragment>
                   ))}
                 </BreadcrumbList>
               </Breadcrumb>

@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     video_fps: int = 2
     video_max_duration_seconds: int = 300  # 5 minutes
 
+    # Molmo 2 Analysis Settings (OpenRouter API)
+    molmo_enabled: bool = True
+    molmo_max_video_duration_seconds: int = 300  # Skip analysis for very long videos
+    molmo_api_key: Optional[str] = None  # OpenRouter API key
+    molmo_api_model: str = "allenai/molmo-2-8b:free"  # OpenRouter model identifier
+
     @property
     def cors_origins(self) -> List[str]:
         """Parse CORS origins from comma-separated string."""
@@ -42,6 +48,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+        extra = "ignore"  # Ignore extra fields from .env that are no longer in the model
 
 
 settings = Settings()

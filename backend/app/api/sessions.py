@@ -12,7 +12,6 @@ from app.models.session import Session as SessionModel
 from app.models.event import Event
 from app.models.project import Project
 from app.auth.api_key import get_project_from_api_key, get_project_from_api_key_value
-from app.utils.exceptions import not_found_error, forbidden_error
 from app.schemas.session import (
     SessionStartRequest,
     SessionStartResponse,
@@ -149,7 +148,7 @@ async def list_sessions(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to fetch sessions for project {project_id}: {e}", exc_info=True)
+        logger.error(f"Failed to fetch sessions for project {project_slug}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch sessions: {str(e)}",

@@ -2,18 +2,23 @@
 import os
 import shutil
 import tempfile
+import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
 
 from sqlalchemy.orm import sessionmaker
+import httpx
 
 from app.database import engine
 from app.models.session import Session
 from app.models.event import Event
 from app.services.video import VideoGenerator
 from app.services.storage import storage_service
+from app.services.molmo_analyzer import MolmoAnalyzer
 from app.utils.logger import logger
+from app.utils.video_queue import queue_video_analysis
 from app.constants import SessionStatus
+from app.config import settings
 
 
 def utc_now() -> datetime:
@@ -36,7 +41,7 @@ async def generate_session_video(ctx: Dict[str, Any], session_id: str) -> Dict[s
     Returns:
         Dict with success status and details
     """
-    logger.error(f"[VIDEO_GEN] Starting video generation for session {session_id}")
+    logger.info(f"[VIDEO_GEN] Starting video generation for session {session_id}")
     db = SessionLocal()
     temp_dir = None
 
@@ -50,7 +55,7 @@ async def generate_session_video(ctx: Dict[str, Any], session_id: str) -> Dict[s
             logger.error(f"[VIDEO_GEN] Session not found: {session_id}")
             return {"success": False, "error": f"Session not found: {session_id}"}
 
-        logger.error(f"[VIDEO_GEN] Found session {session_id}, status: {session.status}, project_id: {session.project_id}")
+        logger.info(f"[VIDEO_GEN] Found session {session_id}, status: {session.status}, project_id: {session.project_id}")
 
         # Check if session should be processed
         if session.status not in [SessionStatus.COMPLETED, SessionStatus.FAILED]:
@@ -63,7 +68,7 @@ async def generate_session_video(ctx: Dict[str, Any], session_id: str) -> Dict[s
         # Update status to processing
         session.status = SessionStatus.PROCESSING
         db.commit()
-        logger.error(f"[VIDEO_GEN] Updated session {session_id} status to PROCESSING")
+        logger.info(f"[VIDEO_GEN] Updated session {session_id} status to PROCESSING")
 
         # Get all events for the session
         events = db.query(Event).filter(
@@ -76,17 +81,17 @@ async def generate_session_video(ctx: Dict[str, Any], session_id: str) -> Dict[s
             db.commit()
             return {"success": False, "error": "No events found for session"}
 
-        logger.error(f"[VIDEO_GEN] Found {len(events)} events for session {session_id}")
+        logger.info(f"[VIDEO_GEN] Found {len(events)} events for session {session_id}")
 
         # Extract event data
         event_data = [event.event_data for event in events]
 
         # Create temporary output directory
         temp_dir = tempfile.mkdtemp(prefix=f"video_output_{session_id}_")
-        logger.error(f"[VIDEO_GEN] Created temp directory: {temp_dir}")
+        logger.info(f"[VIDEO_GEN] Created temp directory: {temp_dir}")
 
         # Generate video
-        logger.error(f"[VIDEO_GEN] Starting video generation with {len(event_data)} events")
+        logger.info(f"[VIDEO_GEN] Starting video generation with {len(event_data)} events")
         generator = VideoGenerator()
         result = await generator.generate_video(
             events=event_data,
@@ -100,23 +105,23 @@ async def generate_session_video(ctx: Dict[str, Any], session_id: str) -> Dict[s
             db.commit()
             return {"success": False, "error": result.error}
 
-        logger.error(f"[VIDEO_GEN] Video generation successful for session {session_id}. Video path: {result.video_path}, Duration: {result.duration_ms}ms, Size: {result.size_bytes} bytes")
+        logger.info(f"[VIDEO_GEN] Video generation successful for session {session_id}. Video path: {result.video_path}, Duration: {result.duration_ms}ms, Size: {result.size_bytes} bytes")
 
         # Upload to Supabase Storage
         project_id = str(session.project_id)
-        logger.error(f"[VIDEO_GEN] Starting uploads for session {session_id}, project_id: {project_id}")
+        logger.info(f"[VIDEO_GEN] Starting uploads for session {session_id}, project_id: {project_id}")
         
         upload_success = True
         upload_errors = []
 
         # Upload video
         if result.video_path:
-            logger.error(f"[VIDEO_GEN] Uploading video from {result.video_path}")
+            logger.info(f"[VIDEO_GEN] Uploading video from {result.video_path}")
             video_result = await storage_service.upload_video(
                 result.video_path, project_id, session_id
             )
             if video_result.success:
-                logger.error(f"[VIDEO_GEN] Video upload successful. URL: {video_result.url}")
+                logger.info(f"[VIDEO_GEN] Video upload successful. URL: {video_result.url}")
                 session.video_url = video_result.url
             else:
                 logger.error(f"[VIDEO_GEN] Video upload failed: {video_result.error}")
@@ -127,39 +132,39 @@ async def generate_session_video(ctx: Dict[str, Any], session_id: str) -> Dict[s
         
         # Upload thumbnail
         if result.thumbnail_path and upload_success:
-            logger.error(f"[VIDEO_GEN] Uploading thumbnail from {result.thumbnail_path}")
+            logger.info(f"[VIDEO_GEN] Uploading thumbnail from {result.thumbnail_path}")
             thumb_result = await storage_service.upload_thumbnail(
                 result.thumbnail_path, project_id, session_id
             )
             if thumb_result.success:
-                logger.error(f"[VIDEO_GEN] Thumbnail upload successful. URL: {thumb_result.url}")
+                logger.info(f"[VIDEO_GEN] Thumbnail upload successful. URL: {thumb_result.url}")
                 session.video_thumbnail_url = thumb_result.url
             else:
-                logger.error(f"[VIDEO_GEN] Thumbnail upload failed: {thumb_result.error} (non-critical)")
+                logger.warning(f"[VIDEO_GEN] Thumbnail upload failed: {thumb_result.error} (non-critical)")
             # Thumbnail upload failure is non-critical, continue without it
         else:
             if not result.thumbnail_path:
-                logger.error(f"[VIDEO_GEN] No thumbnail path in result, skipping thumbnail upload")
+                logger.warning(f"[VIDEO_GEN] No thumbnail path in result, skipping thumbnail upload")
             if not upload_success:
-                logger.error(f"[VIDEO_GEN] Skipping thumbnail upload due to previous upload failure")
+                logger.warning(f"[VIDEO_GEN] Skipping thumbnail upload due to previous upload failure")
         
         # Upload keyframes
         if result.keyframes_path and upload_success:
-            logger.error(f"[VIDEO_GEN] Uploading keyframes from {result.keyframes_path}")
+            logger.info(f"[VIDEO_GEN] Uploading keyframes from {result.keyframes_path}")
             keyframes_result = await storage_service.upload_keyframes(
                 result.keyframes_path, project_id, session_id
             )
             if keyframes_result.success:
-                logger.error(f"[VIDEO_GEN] Keyframes upload successful. URL: {keyframes_result.url}")
+                logger.info(f"[VIDEO_GEN] Keyframes upload successful. URL: {keyframes_result.url}")
                 session.keyframes_url = keyframes_result.url
             else:
-                logger.error(f"[VIDEO_GEN] Keyframes upload failed: {keyframes_result.error} (non-critical)")
+                logger.warning(f"[VIDEO_GEN] Keyframes upload failed: {keyframes_result.error} (non-critical)")
             # Keyframes upload failure is non-critical, continue without it
         else:
             if not result.keyframes_path:
-                logger.error(f"[VIDEO_GEN] No keyframes path in result, skipping keyframes upload")
+                logger.warning(f"[VIDEO_GEN] No keyframes path in result, skipping keyframes upload")
             if not upload_success:
-                logger.error(f"[VIDEO_GEN] Skipping keyframes upload due to previous upload failure")
+                logger.warning(f"[VIDEO_GEN] Skipping keyframes upload due to previous upload failure")
 
         if not upload_success:
             # Re-fetch session to avoid stale data issues
@@ -175,7 +180,7 @@ async def generate_session_video(ctx: Dict[str, Any], session_id: str) -> Dict[s
         video_url = session.video_url
         thumbnail_url = session.video_thumbnail_url
         keyframes_url = session.keyframes_url
-        logger.error(f"[VIDEO_GEN] Stored URLs before re-fetch: video_url={video_url}, thumbnail_url={thumbnail_url}, keyframes_url={keyframes_url}")
+        logger.info(f"[VIDEO_GEN] Stored URLs before re-fetch: video_url={video_url}, thumbnail_url={thumbnail_url}, keyframes_url={keyframes_url}")
 
         # Re-fetch session to check if it was reactivated during video generation
         db.expire_all()  # Clear cached objects
@@ -200,7 +205,7 @@ async def generate_session_video(ctx: Dict[str, Any], session_id: str) -> Dict[s
             }
 
         # Update session with video details (including URLs that were set before re-fetch)
-        logger.error(f"[VIDEO_GEN] Updating session {session_id} to READY status. video_url: {video_url}, thumbnail_url: {thumbnail_url}, keyframes_url: {keyframes_url}, duration_ms: {result.duration_ms}, size_bytes: {result.size_bytes}")
+        logger.info(f"[VIDEO_GEN] Updating session {session_id} to READY status. video_url: {video_url}, thumbnail_url: {thumbnail_url}, keyframes_url: {keyframes_url}, duration_ms: {result.duration_ms}, size_bytes: {result.size_bytes}")
         session.status = SessionStatus.READY
         session.video_url = video_url
         session.video_thumbnail_url = thumbnail_url
@@ -209,8 +214,11 @@ async def generate_session_video(ctx: Dict[str, Any], session_id: str) -> Dict[s
         session.video_duration_ms = result.duration_ms
         session.video_size_bytes = result.size_bytes
         db.commit()
-        logger.error(f"[VIDEO_GEN] Committed session update. Final video_url: {session.video_url}")
-        logger.error(f"[VIDEO_GEN] Successfully completed video generation for session {session_id}")
+        logger.info(f"[VIDEO_GEN] Committed session update. Final video_url: {session.video_url}")
+        logger.info(f"[VIDEO_GEN] Successfully completed video generation for session {session_id}")
+
+        # Note: Analysis will be triggered on-demand when analysis data is requested
+        # and fields are empty (see /api/sessions/{session_id}/analysis endpoint)
 
         return {
             "success": True,
@@ -241,6 +249,125 @@ async def generate_session_video(ctx: Dict[str, Any], session_id: str) -> Dict[s
         # Cleanup temp directory
         if temp_dir and os.path.exists(temp_dir):
             shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+async def analyze_session_video(ctx: Dict[str, Any], session_id: str) -> Dict[str, Any]:
+    """
+    Analyze session video using Molmo 2.
+
+    Args:
+        ctx: ARQ context
+        session_id: The session_id (SDK-generated ID) to analyze
+
+    Returns:
+        Dict with success status and details
+    """
+    if not settings.molmo_enabled:
+        logger.info(f"[MOLMO] Analysis disabled, skipping session {session_id}")
+        return {"success": False, "error": "Analysis is disabled"}
+
+    logger.info(f"[MOLMO] Starting analysis for session {session_id}")
+    db = SessionLocal()
+
+    try:
+        # Find the session
+        session = db.query(Session).filter(
+            Session.session_id == session_id
+        ).first()
+
+        if not session:
+            logger.error(f"[MOLMO] Session not found: {session_id}")
+            return {"success": False, "error": f"Session not found: {session_id}"}
+
+        # Check if video exists
+        if not session.video_url:
+            logger.error(f"[MOLMO] No video URL for session {session_id}")
+            return {"success": False, "error": "No video URL available"}
+
+        # Check video duration
+        if session.video_duration_ms and session.video_duration_ms > settings.molmo_max_video_duration_seconds * 1000:
+            logger.error(f"[MOLMO] Video too long ({session.video_duration_ms}ms), skipping analysis")
+            session.analysis_status = "failed"
+            session.molmo_analysis_metadata = {"error": "Video duration exceeds maximum"}
+            db.commit()
+            return {"success": False, "error": "Video duration exceeds maximum"}
+
+        # Update status to processing
+        session.analysis_status = "processing"
+        db.commit()
+        logger.info(f"[MOLMO] Updated session {session_id} analysis status to processing")
+
+        # Use the video URL directly (must be publicly accessible for OpenRouter API)
+        video_url = session.video_url
+        if not video_url:
+            raise Exception("Video URL required for analysis")
+
+        # Initialize OpenRouter API analyzer
+        analyzer = MolmoAnalyzer()
+        logger.info(f"[MOLMO] Using OpenRouter API analyzer with video URL: {video_url}")
+        
+        # Run analysis with timeout (5 minutes should be enough for API)
+        try:
+            analysis_results = await asyncio.wait_for(
+                asyncio.to_thread(analyzer.analyze, video_url),
+                timeout=300.0  # 5 minutes
+            )
+        except asyncio.TimeoutError:
+            raise Exception("Analysis timed out after 5 minutes")
+
+        # Store results in database
+        session.analysis_status = "completed"
+        session.analysis_completed_at = utc_now()
+        session.session_summary = analysis_results.get("session_summary")
+        session.interaction_heatmap = analysis_results.get("interaction_heatmap")
+        session.conversion_funnel = analysis_results.get("conversion_funnel")
+        session.error_events = analysis_results.get("error_events")
+        session.action_counts = analysis_results.get("action_counts")
+        session.molmo_analysis_metadata = {
+            "model": settings.molmo_api_model,
+            "provider": "openrouter",
+            "processing_time": None,  # Could track this if needed
+        }
+
+        db.commit()
+        logger.info(f"[MOLMO] Analysis completed and stored for session {session_id}")
+
+        return {
+            "success": True,
+            "session_id": session_id,
+            "analysis_status": "completed",
+        }
+
+    except Exception as e:
+        logger.error(f"[MOLMO] Exception analyzing video for session {session_id}: {e}", exc_info=True)
+        try:
+            session = db.query(Session).filter(
+                Session.session_id == session_id
+            ).first()
+            if session:
+                session.analysis_status = "failed"
+                # Store detailed error information
+                error_details = {
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                    "timestamp": utc_now().isoformat(),
+                }
+                # Add more context if available
+                if hasattr(e, "__traceback__"):
+                    import traceback
+                    error_details["traceback"] = "".join(traceback.format_exception(type(e), e, e.__traceback__))
+                session.molmo_analysis_metadata = error_details
+                db.commit()
+                logger.error(f"[MOLMO] Marked session {session_id} analysis as FAILED: {str(e)}")
+        except Exception as db_error:
+            logger.error(f"[MOLMO] Failed to update session status after error: {db_error}")
+
+        return {"success": False, "error": str(e)}
+
+    finally:
+        db.close()
+
+
 async def cleanup_stale_sessions(ctx: Dict[str, Any]) -> Dict[str, Any]:
     """
     Find and process stale sessions.

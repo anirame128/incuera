@@ -1,12 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiClient, Project, APIKey, Session } from '@/lib/api';
+import { apiClient } from '@/lib/api';
 
 // Query Keys
 export const queryKeys = {
     projects: (userId: string) => ['projects', userId],
     project: (projectSlug: string) => ['project', projectSlug],
     apiKeys: (projectSlug: string) => ['apiKeys', projectSlug],
-    sessions: (projectSlug: string) => ['sessions', projectSlug],
 };
 
 // Projects
@@ -100,11 +99,3 @@ export function useDeleteAPIKey() {
     });
 }
 
-// Sessions
-export function useSessions(projectSlug: string) {
-    return useQuery({
-        queryKey: queryKeys.sessions(projectSlug),
-        queryFn: () => apiClient.getSessions(projectSlug),
-        enabled: !!projectSlug,
-    });
-}

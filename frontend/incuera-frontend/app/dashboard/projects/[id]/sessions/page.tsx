@@ -28,7 +28,6 @@ export default function SessionsPage() {
 
   const [sessions, setSessions] = useState<SessionWithStatus[]>([]);
   const [loading, setLoading] = useState(true);
-  const [apiKey, setApiKey] = useState<string>('');
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -65,7 +64,6 @@ export default function SessionsPage() {
           if (projectId) {
             const storedKey = localStorage.getItem(`apiKey_${projectId}`);
             if (storedKey) {
-              setApiKey(storedKey);
               fetchSessions(storedKey);
             } else {
               fetchSessions('');

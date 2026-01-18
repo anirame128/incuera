@@ -3,9 +3,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.api import ingest, sessions, auth, projects, api_keys, videos
-from app.database import Base, engine
-
-# Create database tables (in production, use migrations)
 
 
 app = FastAPI(

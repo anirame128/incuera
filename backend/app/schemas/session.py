@@ -1,6 +1,6 @@
 """Schemas for session management."""
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 
 
@@ -55,6 +55,22 @@ class VideoStatusResponse(BaseModel):
     video_generated_at: Optional[datetime] = None
     video_duration_ms: Optional[int] = None
     video_size_bytes: Optional[int] = None
+
+
+class SessionAnalysisResponse(BaseModel):
+    """Response schema for session analysis results."""
+    session_id: str
+    analysis_status: str  # pending|processing|completed|failed
+    analysis_completed_at: Optional[datetime] = None
+    session_summary: Optional[str] = None
+    interaction_heatmap: Optional[Dict[str, Any]] = None
+    conversion_funnel: Optional[Dict[str, Any]] = None
+    error_events: Optional[List[Dict[str, Any]]] = None  # List of error events
+    action_counts: Optional[Dict[str, Any]] = None
+    molmo_analysis_metadata: Optional[Dict[str, Any]] = None
+
+    class Config:
+        from_attributes = True
 
 
 class SessionListItem(BaseModel):
