@@ -1,0 +1,3 @@
+# Local pack output (do not commit)
+dist-pkg/
+incuera-sdk-*.tgz

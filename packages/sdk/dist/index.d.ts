@@ -11,7 +11,6 @@ declare class Incuera {
     private events;
     private stopRecording?;
     private uploadInterval?;
-    private heartbeatInterval?;
     private isRecording;
     private totalEventCount;
     private maxEvents;
@@ -44,10 +43,6 @@ declare class Incuera {
      * Send session metadata on init
      */
     private sendSessionMetadata;
-    /**
-     * Send heartbeat to keep session active
-     */
-    private sendHeartbeat;
     /**
      * Signal session end to trigger video generation.
      * API key is included in the body because sendBeacon cannot set custom headers.

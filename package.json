@@ -1,9 +1,0 @@
-{
-  "name": "incuera-monorepo",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "build:sdk": "cd packages/sdk && npm run build",
-    "publish:sdk": "cd packages/sdk && npm run build && npm publish"
-  }
-}

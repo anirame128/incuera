@@ -56,15 +56,28 @@ cp .env.local.example .env.local
 npm run dev
 ```
 
-### 3. Demo App (Optional)
+### 3. SDK – Local pack (for ecommerce-demo and dev)
+
+The demo app installs `@incuera/sdk` from a **local tarball** (no symlink). Create it once, then whenever the SDK changes:
 
 ```bash
+cd packages/sdk
+npm run pack:local
+# Creates dist-pkg/incuera-sdk-local.tgz
+```
+
+### 4. Demo App (Optional)
+
+```bash
+# One-time: pack the SDK (see above), then install
 cd ecommerce-demo
 npm install
 cp .env.example .env.local
 # Set NEXT_PUBLIC_INCUERA_API_KEY and NEXT_PUBLIC_INCUERA_API_HOST
 npm run dev
 ```
+
+After SDK changes: run `npm run pack:local` in `packages/sdk`, then `npm install` in `ecommerce-demo`.
 
 ## Environment Variables
 
@@ -102,7 +115,6 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 - Integrates rrweb for browser event capture
 - Automatic event batching (100 events or 10s interval)
 - Minimum 30s session duration filter
-- Heartbeat mechanism for long sessions
 
 ### Video Generation
 - Headless Playwright renders rrweb replays
@@ -179,9 +191,17 @@ cd backend && arq app.workers.config.WorkerSettings
 # Frontend
 cd frontend/incuera-frontend && npm run dev
 
-# Demo
-cd ecommerce-demo && npm run dev
+# SDK (when changing packages/sdk): build and pack for local install
+cd packages/sdk && npm run pack:local
+
+# Demo (uses @incuera/sdk from packages/sdk/dist-pkg/incuera-sdk-local.tgz)
+cd ecommerce-demo && npm install && npm run dev
 ```
+
+### SDK ↔ app separation
+
+- **Dev**: ecommerce-demo depends on `file:../packages/sdk/dist-pkg/incuera-sdk-local.tgz`. Run `npm run pack:local` in `packages/sdk` after SDK changes, then `npm install` in ecommerce-demo. The tarball is a real install (no symlink).
+- **Production**: Publish `@incuera/sdk` to npm (or a private registry), then set `"@incuera/sdk": "^0.1.0"` in the app.
 
 ## License
 

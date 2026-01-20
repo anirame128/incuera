@@ -12265,7 +12265,6 @@ var Incuera = class {
     });
     this.sendSessionMetadata();
     this.uploadInterval = setInterval(() => this.flush(), 1e4);
-    this.heartbeatInterval = setInterval(() => this.sendHeartbeat(), 6e4);
     if (typeof window !== "undefined") {
       window.addEventListener("beforeunload", this.handlePageUnload);
       window.addEventListener("pagehide", this.handlePageHide);
@@ -12348,30 +12347,6 @@ var Incuera = class {
     }
   }
   /**
-   * Send heartbeat to keep session active
-   */
-  async sendHeartbeat() {
-    if (!this.isRecording) return;
-    try {
-      const headers = {
-        "Content-Type": "application/json"
-      };
-      if (this.config.apiKey) {
-        headers["X-API-Key"] = this.config.apiKey;
-      }
-      await fetch(`${this.config.apiHost}/api/sessions/heartbeat`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          sessionId: this.sessionId,
-          timestamp: Date.now(),
-          eventCount: this.totalEventCount
-        })
-      });
-    } catch (error) {
-    }
-  }
-  /**
    * Signal session end to trigger video generation.
    * API key is included in the body because sendBeacon cannot set custom headers.
    */
@@ -12416,9 +12391,6 @@ var Incuera = class {
     }
     if (this.uploadInterval) {
       clearInterval(this.uploadInterval);
-    }
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval);
     }
     if (typeof window !== "undefined") {
       window.removeEventListener("beforeunload", this.handlePageUnload);

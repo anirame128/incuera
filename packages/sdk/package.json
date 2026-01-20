@@ -18,7 +18,9 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
-    "prepublishOnly": "npm run build"
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run build",
+    "pack:local": "npm pack && node -e \"const fs=require('fs'); fs.mkdirSync('dist-pkg',{recursive:true}); const f=fs.readdirSync('.').find(n=>n.startsWith('incuera-sdk-')&&n.endsWith('.tgz')); if(f) fs.renameSync(f,'dist-pkg/incuera-sdk-local.tgz');\""
   },
   "keywords": [
     "session-replay",
